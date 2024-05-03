@@ -27,7 +27,7 @@ makec=function(y,tk,d,h){
 }
 
 ##slope<=eps/n^od/range^2
-deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,v=.1,eps1=2,eps2=1,eps=NULL,od=2/9){
+deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,eps1=2,eps2=1,eps=NULL){
   nraw=length(y)
   s1=lower
   s2=upper
@@ -67,7 +67,7 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,
     } else{
       lam = 10^(-3)*n^(-1/7)
     }
-    lam = v*lam
+    lam = 0.1*lam
   }
   if(is.null(eps)){
     eps=ifelse(abs(skewness(y))>0.7,eps2,eps1)
@@ -111,11 +111,9 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,
   
 
   ##  get unimodal
-  ans1=deconumfit(y,tk,hmat,cvec,b0,wmat,D,lam,eps=eps,od)
+  ans1=deconumfit(y,tk,hmat,cvec,b0,wmat,D,lam,eps=eps)
   ans2=deconbmfit(y,tk,hmat,cvec,b0,wmat,D,lam)
-  t1=as.numeric((ans1$crit-ans2$crit))
-  #t2=as.numeric((ans1$crit-ans2$crit)/abs(ans1$crit))
-  fhat2=round(delta%*%ans2$bhat,10)
+  t1=as.numeric((ans1$crit-ans2$crit))  fhat2=round(delta%*%ans2$bhat,10)
   dfhat2=diff(fhat2)
   outtb=NULL
   if(sum(dfhat2>0)==0 |sum(dfhat2<0)==0){
@@ -133,8 +131,8 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,
       cdf1=cdf1/cdf1[2000]
       outtb <- foreach(t=1:B,.combine = 'rbind') %dopar%{
         yb=sapply(1:n,function(o){u=runif(1);id=min(which(u<cdf1));alp=(cdf1[id]-u)/(cdf1[id]-cdf1[id-1]);alp*yp[id-1]+(1-alp)*yp[id]})
-        yb=yb+runif(n,-h,h)#;hist(yb,breaks=30)
-        deconmodet(yb,tk,d,h,hmat,b0,wmat,D,delta,lam=lam,eps=eps,od)
+        yb=yb+runif(n,-h,h)
+        deconmodet(yb,tk,d,h,hmat,b0,wmat,D,delta,lam=lam,eps=eps)
       } 
       pvalue=sum(outtb>t1)/B
     }
@@ -157,7 +155,7 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,
   ans
 }
 ##############
-deconumfit=function(y,tk,hmat,cvec,b0,wmat,D,lam=NULL,eps,od){	
+deconumfit=function(y,tk,hmat,cvec,b0,wmat,D,lam=NULL,eps){	
   n <- length(y)
   m=length(tk)-3
   k1=max(min(which(tk>quantile(y,.1)))-1,4)
@@ -177,7 +175,7 @@ deconumfit=function(y,tk,hmat,cvec,b0,wmat,D,lam=NULL,eps,od){
         tmpm[j,j]=-1
       }
     }
-    epsvec=c(rep(0,k1-3),rep(eps/n^od/diff(range(tk))^2,i-k1+1),0,0,rep(eps/n^od/diff(range(tk))^2,k2-i+1),rep(0,m-k2))
+    epsvec=c(rep(0,k1-3),rep(eps/n^(2/9)/diff(range(tk))^2,i-k1+1),0,0,rep(eps/n^(2/9)/diff(range(tk))^2,k2-i+1),rep(0,m-k2))
     amatl1[[i-k1+1]]=list(amat=tmpm, epsvec=epsvec)
     
   }
@@ -242,14 +240,14 @@ deconbmfit=function(y,tk,hmat,cvec,b0,wmat,D,lam=NULL){
   ans2
 }
 ##################################
-deconmodet <- function(yb,tk,d,h,hmat,b0,wmat,D,delta,lam,eps,od){
+deconmodet <- function(yb,tk,d,h,hmat,b0,wmat,D,delta,lam,eps){
   n=length(yb)
   m=length(tk)-3
   capk=length(tk) 
   s1=min(tk)
   s2=max(tk)
   cb=makec(yb,tk,d,h)
-  fit1=deconumfit(yb,tk,hmat,cb,b0,wmat,D,lam,eps=eps,od)
+  fit1=deconumfit(yb,tk,hmat,cb,b0,wmat,D,lam,eps=eps)
   fit2=deconbmfit(yb,tk,hmat,cb,b0,wmat,D,lam)
   fhat2=round(delta%*%fit2$bhat,10)
   dfhat2=diff(fhat2)
