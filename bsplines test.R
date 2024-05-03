@@ -225,7 +225,7 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL){
   ans2
 }
 ##################################
-modet <- function(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam,eps,od){
+modet <- function(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam,eps){
   n=length(yb)
   m=dim(slopes)[2]
   capk=length(kn) 
@@ -238,7 +238,7 @@ modet <- function(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam,eps,od){
   for(i in 1:m){
     cb[i]=sum(bb[,i])/n
   }
-  fit1=umfit(yb,kn,hmat,cb,slopes,b0,wmat,D,bspl,lam,eps=eps,od)
+  fit1=umfit(yb,kn,hmat,cb,slopes,b0,wmat,D,bspl,lam,eps=eps)
   fit2=bmfit(yb,kn,hmat,cb,slopes,b0,wmat,D,bspl,lam)
   fhat2=round(bp%*%fit2$bhat,10)
   dfhat2=diff(fhat2)
