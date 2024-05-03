@@ -4,8 +4,7 @@ library("doParallel")
 library("diptest")
 library("moments")
 library("multimode")
-##slope<=eps/n^od/range^2
-bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,v=1,eps1=5,eps2=2,eps=NULL,od=2/7,nc=12){
+bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=5,eps2=2,eps=NULL){
   nraw=length(y)
   s1=lower
   s2=upper
@@ -14,11 +13,8 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,v=1,eps1=5,ep
   rng=q2-q1
   if(is.null(lower)){s1=as.numeric(q1-.4*rng)}
   if(is.null(upper)){s2=as.numeric(q2+.4*rng)}
-  capk=round(nraw^(1/7)*nc)
+  capk=round(nraw^(1/7)*12)
   qy=as.numeric(quantile(y,1:capk/(capk+1)))
-  #dt=max(qy[2]-qy[1],qy[capk]-qy[capk-1])
-  #k1=max(floor((qy[1]-s1)/dt/2),2)
-  #k2=max(floor((s2-qy[capk])/dt/2),2)
   ####add more knots on both sides
   if(s1<qy[1]){
     k1=min(floor(log((qy[1]-s1)/3/(qy[2]-qy[1])+1, 3/2) -1 ), round(capk/8))
@@ -66,7 +62,6 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,v=1,eps1=5,ep
     } else{
       lam = 10^(-3)*n^(-1/7)
     }
-    lam = v*lam
   }
   if(is.null(eps)){
     eps=ifelse(abs(skewness(y))>0.7,eps2,eps1)
@@ -111,7 +106,7 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,v=1,eps1=5,ep
   for(i in 1:(m-2)){D1[i,i]=-1;D1[i,i+1]=1}
   D=D1%*%D2*d^(5/2)
   ##  get unimodal
-  ans1=umfit(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam,eps=eps,od)
+  ans1=umfit(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam,eps=eps)
   ans2=bmfit(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam)
   t1=as.numeric((ans1$crit-ans2$crit))
   #t2=as.numeric((ans1$crit-ans2$crit)/abs(ans1$crit))
@@ -133,7 +128,7 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,v=1,eps1=5,ep
       cdf1=cdf1/cdf1[4001]
       outtb <- foreach(t=1:B,.combine = 'rbind') %dopar%{
         yb=sapply(1:n,function(o){u=runif(1);id=min(which(u<cdf1));alp=(cdf1[id]-u)/(cdf1[id]-cdf1[id-1]);alp*yp[id-1]+(1-alp)*yp[id]})
-        modet(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam=lam,eps=eps,od)
+        modet(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam=lam,eps=eps)
       } 
       pvalue=sum(outtb>t1)/B
     }
@@ -154,7 +149,7 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,v=1,eps1=5,ep
   ans
 }
 ##############
-umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,od){	
+umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps){	
   n <- length(y)
   m=length(kn)+1
   k1=max(min(which(kn>quantile(y,.2)))-1,3)
@@ -166,12 +161,10 @@ umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,od){
     amat[(k+1):(m-1),]=-slopes[(k+1):(m-1),]
     amat[m,1]=1
     amat[m+1,m]=1
-    #epsvec=c(0,0,rep(eps/n^(1/7)/diff(range(kn))^2,k-3),0,0,rep(eps/n^(1/7)/diff(range(kn))^2,m-4-k),0,0,0,0)
-    epsvec=c(rep(0,k1-2),rep(eps/n^od/diff(range(kn))^2,k-k1+1),0,0,rep(eps/n^od/diff(range(kn))^2,k2-k+1),rep(0,m-k2-3),0,0)
+    epsvec=c(rep(0,k1-2),rep(eps/n^(2/7)/diff(range(kn))^2,k-k1+1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,k2-k+1),rep(0,m-k2-3),0,0)
     amatl1[[k-k1+1]]=list(amat=amat, epsvec=epsvec)
   }
   lamt=lam
-  #if(is.null(lamt)){lamt=n^(-5/9)*10^(5-kurtosis(y)/1)}
   zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
   qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
   crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
@@ -217,7 +210,6 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL){
     amat2[[i]]=amat
   }
   lamt=lam
-  #if(is.null(lamt)){lamt=n^(-5/9)*10^(5-kurtosis(y)/1)}
   zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
   qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
   crit<-lapply(amat2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
