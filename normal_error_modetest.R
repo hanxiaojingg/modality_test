@@ -45,11 +45,11 @@ makec=function(y,tk,d,h){
 }
 
 
-deconmodetest <- function(y, h, v=0.01, lam=NULL, eps1=2, eps2=1, od=2/9, B=100){
+deconmodetest <- function(y, h, v=0.01, lam=NULL, eps1=2, eps2=1, od=1/9, B=100){
   nraw=length(y)
   s1=min(y)
   s2=max(y)
-  tk = seq(s1,s2,length.out = round((12*n^(1/9))))
+  tk = seq(s1,s2,length.out = round(12*nraw^od))
   d = tk[2]-tk[1]
   m = length(tk)-3
   yp = seq(s1-3*h,s2+3*h,length.out = 2000); np = length(yp)
@@ -59,13 +59,13 @@ deconmodetest <- function(y, h, v=0.01, lam=NULL, eps1=2, eps2=1, od=2/9, B=100)
   if(is.null(lam)){
     K = kurtosis(y)
     if(K<2){
-      lam = 10^2*n^(-1/7)
+      lam = 10^2*n^(-od)
     } else if(K>2 & K<5){
-      lam = 10^(4-K)*n^(-1/7)
+      lam = 10^(4-K)*n^(-od)
     } else if(K>5 & K<9){
-      lam = 10^(3/2-K/2)*n^(-1/7)
+      lam = 10^(3/2-K/2)*n^(-od)
     } else{
-      lam = 10^(-3)*n^(-1/7)
+      lam = 10^(-3)*n^(-od)
     }
     lam = v*lam
   }
@@ -179,7 +179,7 @@ deconumfit=function(y,tk,hmat,cvec,b0,wmat,D,lam=NULL,eps,od){
         tmpm[j,j]=-1
       }
     }
-    epsvec=c(rep(0,k1-3),rep(eps/n^od/diff(range(tk))^2,i-k1+1),0,0,rep(eps/n^od/diff(range(tk))^2,k2-i+1),rep(0,m-k2))
+    epsvec=c(rep(0,k1-3),rep(eps/n^(od*2)/diff(range(tk))^2,i-k1+1),0,0,rep(eps/n^(od*2)/diff(range(tk))^2,k2-i+1),rep(0,m-k2))
     amatl1[[i-k1+1]]=list(amat=tmpm, epsvec=epsvec)
     
   }
@@ -564,7 +564,7 @@ mu2=4
 
 h=0.5 #100/100
 h=1 #95/100
-h = 1.5#29/100
+h = 1.5#58/200  #8/35 v=0.0001
 h=2 #8/200
 pvec = rep(0,1000)
 pvec3 = rep(0,100)
@@ -572,13 +572,34 @@ t1=Sys.time()
 for(i in 1:100){
   uu=runif(n);x=rnorm(n,0,1);x[uu<0.5]=rnorm(sum(uu<0.5),mu2,1)
   y=x+rnorm(n,0,h)
-  ans=deconmodetest(y,h,v=0.01,B=1000)
+  ans=deconmodetest(y,h,v=0.0001,B=500)
   pvec3[i]=ans$pvalue
 }
 t2=Sys.time()
 t2-t1
 sum(pvec3<=0.05)
 
+h=2
+uu=runif(n);x=rnorm(n,0,1);x[uu<0.5]=rnorm(sum(uu<0.5),mu2,1)
+y=x+rnorm(n,0,h)
+ans=deconmodetest(y,h,v=0.00001,B=1)
+par(mfrow=c(1,2))
+hist(x,breaks=30,freq=FALSE)
+lines(ans$yp,ans$fhat1,col=2)
+lines(ans$yp,ans$fhat2,col=3)
+lines(ans$yp,0.5*dnorm(ans$yp,0,1)+0.5*dnorm(ans$yp,mu2,1))
+rug(ans$kn)
+hist(y,breaks=30,freq=FALSE)
+lines(ans$yp,ans$ghat1,col=2)
+lines(ans$yp,ans$ghat2,col=3)
+f0 <- function(x, y, h) {
+  (0.5 * dnorm(x, mean = 0, sd = 1) + 0.5 * dnorm(x, mean = mu2, sd = 1))*dnorm(y-x,0,h)
+}
+density_with_error <- sapply(ans$yp, function(y) {
+  integrate(f0, lower = -Inf, upper = Inf, y=y, h=h)$value
+})
+lines(ans$yp,density_with_error)
+rug(ans$kn)
 #################################
 
 plot(yp,delta[,1],type = "l")
