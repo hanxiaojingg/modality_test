@@ -27,7 +27,7 @@ makec=function(y,tk,d,h){
 }
 
 ##slope<=eps/n^od/range^2
-deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,eps1=2,eps2=1,eps=NULL){
+deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,v=0.1, eps1=2,eps2=1,eps=NULL){
   nraw=length(y)
   s1=lower
   s2=upper
@@ -67,7 +67,7 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,
     } else{
       lam = 10^(-3)*n^(-1/7)
     }
-    lam = 0.1*lam
+    lam = v*lam
   }
   if(is.null(eps)){
     eps=ifelse(abs(skewness(y))>0.7,eps2,eps1)
@@ -113,7 +113,8 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,
   ##  get unimodal
   ans1=deconumfit(y,tk,hmat,cvec,b0,wmat,D,lam,eps=eps)
   ans2=deconbmfit(y,tk,hmat,cvec,b0,wmat,D,lam)
-  t1=as.numeric((ans1$crit-ans2$crit))  fhat2=round(delta%*%ans2$bhat,10)
+  t1=as.numeric((ans1$crit-ans2$crit))  
+  fhat2=round(delta%*%ans2$bhat,10)
   dfhat2=diff(fhat2)
   outtb=NULL
   if(sum(dfhat2>0)==0 |sum(dfhat2<0)==0){
@@ -262,20 +263,119 @@ deconmodet <- function(yb,tk,d,h,hmat,b0,wmat,D,delta,lam,eps){
 
 
 
+library(quadprog)
+library(moments)
+library(doParallel)
+no_cores <- detectCores()
+cl <- makeCluster(no_cores - 2)
+registerDoParallel(cl)
+clusterEvalQ(cl, library(quadprog))  # Load the quadprog library in each worker
+clusterExport(cl, list("deconmodetest", "deconumfit", "deconbmfit", "deconmodet", "makec"))
+#stopCluster(cl)
 
 par(mfrow=c(1,2))
-n=800
+n=600
 h=2
-uu=runif(n);x=rnorm(n,0,1);x[uu<0.4]=rnorm(sum(uu<0.4),4,1)
+mu2=4
+p=0.5
+uu=runif(n);x=rnorm(n,0,1);x[uu<p]=rnorm(sum(uu<p),mu2,1)
 y=x+runif(n,-h,h)
-ans=deconmodetest(y,h)
+t1=Sys.time()
+ans=deconmodetest(y,h,v=0.01, B=1000)
+t2=Sys.time()
+t2-t1
 ans$pvalue
 hist(y,breaks=40,freq=FALSE)
 lines(ans$yp,ans$ghat1,col=2)
 lines(ans$yp,ans$ghat2,col=3)
-lines(ans$yp,(0.6*pnorm(ans$yp+h,0,1)+0.4*pnorm(ans$yp+h,4,1))/2/h-(0.6*pnorm(ans$yp-h,0,1)+0.4*pnorm(ans$yp-h,4,1))/2/h)
+lines(ans$yp,((1-p)*pnorm(ans$yp+h,0,1)+p*pnorm(ans$yp+h,mu2,1))/2/h-((1-p)*pnorm(ans$yp-h,0,1)+p*pnorm(ans$yp-h,mu2,1))/2/h)
 hist(x,breaks=40,freq=FALSE)
 lines(ans$yp,ans$fhat1,col=2)
 lines(ans$yp,ans$fhat2,col=3)
-lines(ans$yp,0.6*dnorm(ans$yp,0,1)+0.4*dnorm(ans$yp,4,1))
+lines(ans$yp,(1-p)*dnorm(ans$yp,0,1)+p*dnorm(ans$yp,mu2,1))
 #rug(ans$kn)
+
+n=600
+h=0.5 # 500 out of 500
+pv1=rep(0,100)
+t1=Sys.time()
+for(rep in 1:100){
+  uu=runif(n);x=rnorm(n,0,1);x[uu<p]=rnorm(sum(uu<p),mu2,1)
+  y=x+runif(n,-h,h)
+  ans=deconmodetest(y,h,v=0.01, B=1000)
+  pv1[rep]=ans$pvalue
+}
+t2=Sys.time()
+t2-t1
+sum(pv1<=0.05)
+
+
+n=600
+h=1 # 1000 out of 1000
+pv1=rep(0,200)
+t1=Sys.time()
+for(rep in 1:100){
+  uu=runif(n);x=rnorm(n,0,1);x[uu<p]=rnorm(sum(uu<p),mu2,1)
+  y=x+runif(n,-h,h)
+  ans=deconmodetest(y,h,v=0.01, B=1000)
+  pv1[rep]=ans$pvalue
+}
+t2=Sys.time()
+t2-t1
+sum(pv1<=0.05)
+
+n=600
+h=1.5 # v= 0.01 89 out of 100 v=0.1 494 out of 500 246 out of 250 247 out of 250
+pv2=rep(0,300)
+t1=Sys.time()
+for(rep in 1:300){
+  uu=runif(n);x=rnorm(n,0,1);x[uu<p]=rnorm(sum(uu<p),mu2,1)
+  y=x+runif(n,-h,h)
+  ans=deconmodetest(y,h,v=0.1, B=1000)
+  pv2[rep]=ans$pvalue
+} 
+t2=Sys.time()
+t2-t1
+sum(pv2<=0.05)
+
+n=600
+h=2 # 365 out of 600, 0.1 193 out of 300; 227 out of 300 ;130 out of 200 179 out of 250 166, 171 out of 250
+pv3=matrix(0,250,2)
+t1=Sys.time()
+for(rep in 90:250){
+  uu=runif(n);x=rnorm(n,0,1);x[uu<p]=rnorm(sum(uu<p),mu2,1)
+  y=x+runif(n,-h,h)
+  ans1=deconmodetest(y,h,v=0.1, B=1000)#v=0.1 0.75 v=1 0.14
+ #ans2=deconmodetest(y,h,v=0.09, B=1000)#v=0.001 0.52 v=0.01,0.05,0.08 0.65
+  pv3[rep,1]=ans1$pvalue
+  #pv3[rep,2]=ans2$pvalue
+} 
+t2=Sys.time()
+t2-t1
+sum(pv3[,1]<=0.05)
+
+
+n=600
+h=2.5 # v=0.1 0.66 0.56 122 out of 200 126 out of 200 v=0.05 0.68 0.52 v=0.09 0.63 0.63 123 out of 200 184,193 out of 300 178 out of 300 177 out of 300 v=0.08 0.65
+pv4=matrix(0,300,2)
+t1=Sys.time()
+for(rep in 1:300){
+  uu=runif(n);x=rnorm(n,0,1);x[uu<p]=rnorm(sum(uu<p),mu2,1)
+  y=x+runif(n,-h,h)
+  ans1=deconmodetest(y,h,v=0.09, B=1000)
+  #ans2=deconmodetest(y,h,v=0.08, B=800)
+  pv4[rep,1]=ans1$pvalue
+ # pv4[rep,2]=ans2$pvalue
+} 
+t2=Sys.time()
+t2-t1
+sum(pv4[,1]<=0.05)
+#sum(pv4[,2]<=0.05)
+stopCluster(cl)
+
+cl <- makeCluster(no_cores - 2)
+registerDoParallel(cl)
+clusterEvalQ(cl, library(quadprog))  # Load the quadprog library in each worker
+clusterExport(cl, list("deconmodetest", "deconumfit", "deconbmfit", "deconmodet", "makec"))
+
+
