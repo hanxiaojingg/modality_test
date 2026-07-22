@@ -275,12 +275,12 @@ out1 = readRDS("out_norm_800.rds")
 library(foreach)
 library(doParallel)
 
-n = 800
-reps = 500
+n = 200
+reps = 200
 #d = seq(0, 5, 1)
 d = c(0,1,seq(2,4.6,0.1))
-d = d[1:18]
-d=c(0,1,seq(2,3.9,0.1))
+#d = d[1:18]
+#d=c(0,1,seq(2,3.9,0.1))
 dist_names = c("mixnorm2")   # later extend this
 methods = c("SI", "HY", "FM", "HH", "CH")
 
@@ -298,7 +298,7 @@ generate_x = function(dist_name, di, n, reps) {
     u = runif(n * reps)
     x = rnorm(n * reps, 0, 1)
     x[u < 0.4] = rnorm(sum(u < 0.4), di, 1)
-    x[u > 0.8] = rnorm(sum(u > 0.8), 0, 9)
+    x[u > 0.8] = rnorm(sum(u > 0.8), 0, 3)
     x = matrix(x, reps, n)
     return(x)
   }
@@ -844,7 +844,7 @@ pval = matrix(0,8,reps)
 
 registerDoParallel(9)
 t1 = Sys.time()
-for(j in 1:200){
+for(j in 1:100){
   xj = x[j, ]
   pval[1, j] = bmodetest(xj,B=1000,eps1=5,eps2=2,v=2)$pvalue
   pval[2, j] = bmodetest(xj,B=1000,eps1=5,eps2=2,v=5)$pvalue
@@ -855,12 +855,12 @@ for(j in 1:200){
   pval[7, j] = bmodetest(xj,B=1000,eps1=5,eps2=2,v=1000)$pvalue
   print(j)
 }
-claw_800 = rowMeans(pval[,1:200] < 0.05)
+claw_800 = rowMeans(pval[,1:100] < 0.05)
 t2 = Sys.time()
 t2-t1
 stopImplicitCluster()
-
-saveRDS(pval, file = "out2_claw_800.rds")
+pval[1:7,1:20]
+saveRDS(pval[1:7,1:20], file = "lam_claw_800.rds")
 
 
 
@@ -896,6 +896,8 @@ legend("topright", legend=c("Pareto", "Normal"), col=c("red", "blue"), pch=1)
 
 
 
+#############sim1 norm mix
+par(mfrow=c(1,2), mar=c(4,4,4,4))
 ## n = 200, normal mixture1
 d=c(0,1,seq(2,4.8,0.1))
 dip = c(0,0,0,0.002,0.002,0.004,0.006,0.007,0.01,0.014,0.032,0.041,0.064,0.093,0.128,
@@ -912,24 +914,68 @@ lines(d,dip,lwd=2.5,lty=3,col='darkgreen')
 points(d,dip,pch=3,cex=0.6,col='darkgreen')
 abline(h=0.05,lty=9)
 abline(v=2.442,lty=9)
-#legend("topleft",c('splines','kernel','diptest'),cex=1,lwd=2,pch=c(15,4,3),lty=c(2,4,3),col=c('darkred','steelblue','darkgreen'))
-methods = c("ACR", "SI", "HY", "FM", "HH", "CH")
+#legend("topleft",c('splines','ACR','diptest'),cex=1,lwd=2,pch=c(15,4,3),lty=c(2,4,3),col=c('darkred','steelblue','darkgreen'))
+out1=readRDS("out_norm_200.rds")
+methods = c("SI", "HY", "FM", "HH", "CH")
 method_cols = c("black", "orange", "purple", "brown", "magenta", "cyan4")
 for (k in seq_along(methods)) {
   meth = methods[k]
   tmp = out1[out1$method == meth, ]
-  
+  tmp = tmp%>%arrange(d)
   lines(tmp$d, tmp$power, lwd = 2, lty = 5, col = method_cols[k])
   points(tmp$d, tmp$power, pch = 5, cex = 0.6, col = method_cols[k])
 }
 
 legend("topleft",
-       legend = c("splines", "kernel", "diptest", methods),
+       legend = c("splines", "ACR", "diptest", methods),
        lwd = 2,
        pch = c(15, 4, 3, rep(5, 6)),
        lty = c(1, 4, 3, rep(5, 6)),
        col = c("darkred", "steelblue", "darkgreen", method_cols))
 
+
+
+d=c(0,1,seq(2,4,0.1))
+dip=c(0,0,0,0,0,0,0,0.005,
+      0.009,0.02,0.033,0.065,0.145,0.256,0.402,0.572,0.743,0.875,0.955,0.984,0.998,0.999,1)
+ker=c(0.046,0.037,0.04,0.042,0.038,0.045,0.056,0.078,
+      0.107,0.161,0.249,0.387,0.544,0.678,0.829,0.928,0.974,0.994,0.998,0.999,1,1,1)
+spl=c(0.003,0.003,0.004,0.004,0.004,0.019,0.042,0.085,0.169,0.285,0.451,0.643,0.8,0.916,0.969,0.992,
+      0.999,1,1,1,1,1,1)
+plot(d,spl,type="l",ylab='proportion rejection',main = "0.6N(0,1)+0.4N(d,1), n=800",lwd=2.5,lty=1,col='darkred')
+points(d,spl,pch=15,cex=0.6,col='darkred')
+lines(d,ker,lwd=2.5,lty=4,col='steelblue')
+points(d,ker,pch=4,cex=0.6,col='steelblue')
+lines(d,dip,lwd=2.5,lty=3,col='darkgreen')
+points(d,dip,pch=3,cex=0.6,col='darkgreen')
+abline(h=0.05,lty=9)
+abline(v=2.442,lty=9)
+out1=readRDS("out_norm_800.rds")
+methods = c("SI", "HY", "FM", "HH", "CH")
+method_cols = c("black", "orange", "purple", "brown", "magenta", "cyan4")
+for (k in seq_along(methods)) {
+  meth = methods[k]
+  tmp = out1[out1$method == meth, ]
+  tmp = tmp%>%arrange(d)
+  lines(tmp$d, tmp$power, lwd = 2, lty = 5, col = method_cols[k])
+  points(tmp$d, tmp$power, pch = 5, cex = 0.6, col = method_cols[k])
+}
+
+legend("topleft",
+       legend = c("splines", "ACR", "diptest", methods),
+       lwd = 2,
+       pch = c(15, 4, 3, rep(5, 6)),
+       lty = c(1, 4, 3, rep(5, 6)),
+       col = c("darkred", "steelblue", "darkgreen", method_cols))
+
+
+
+
+
+
+
+#######################sim2 nor_mix2
+par(mfrow=c(1,2), mar=c(4,4,4,4))
 ## n = 200, normal mixture2
 d=c(0,1,seq(2,4.6,0.1))
 spl=c(0.011,0.014,0.02,0.028,0.033,0.049,0.058,0.085,0.111,0.157,0.209,0.274,0.347,0.43,0.532,0.606,
@@ -938,7 +984,44 @@ dip=c(0,0,0,0,0,0.002,0.01,0.017,0.019,0.029,0.045,0.066,0.096,0.136,0.181,0.239
       0.458,0.547,0.646,0.719,0.776,0.836,0.875,0.914,0.938,0.964,0.976)
 ker=c(0.044,0.047,0.079,0.082,0.084,0.106,0.125,0.145,0.17,0.221,
       0.27,0.317,0.385,0.46,0.511,0.588,0.659,0.724,0.801,0.849,0.889,0.92,0.944,0.961,0.977,0.988,0.996,0.997,0.999)
-plot(d,spl,type="l",ylab='proportion rejection',main = "0.4N(0,1)+0.4N(d,1)+0.2N(0,9), n=200",lwd=2.5,lty=2,ylim=c(0,1),col='darkred')
+plot(d,spl,type="l",ylab='proportion rejection',main = "0.4N(0,1)+0.4N(d,1)+0.2N(0,9), n=200",lwd=2.5,lty=1,ylim=c(0,1),col='darkred')
+points(d,spl,pch=15,cex=0.6,col='darkred')
+lines(d,ker,lwd=2.5,lty=4,col='steelblue')
+points(d,ker,pch=4,cex=0.6,col='steelblue')
+lines(d,dip,lwd=2.5,lty=3,col='darkgreen')
+points(d,dip,pch=3,cex=0.6,col='darkgreen')
+abline(h=0.05,lty=9)
+abline(v=2,lty=9)
+out1=readRDS("out2_norm_200.rds")
+methods = c("SI", "HY", "FM", "HH", "CH")
+method_cols = c("black", "orange", "purple", "brown", "magenta", "cyan4")
+for (k in seq_along(methods)) {
+  meth = methods[k]
+  tmp = out1[out1$method == meth, ]
+  tmp = tmp%>%arrange(d)
+  lines(tmp$d, tmp$power, lwd = 2, lty = 5, col = method_cols[k])
+  points(tmp$d, tmp$power, pch = 5, cex = 0.6, col = method_cols[k])
+}
+
+legend("topleft",
+       legend = c("splines", "ACR", "diptest", methods),
+       lwd = 2,
+       pch = c(15, 4, 3, rep(5, 6)),
+       lty = c(1, 4, 3, rep(5, 6)),
+       col = c("darkred", "steelblue", "darkgreen", method_cols))
+
+
+
+
+d=c(0,seq(1,1.8,0.2),seq(1.9,3.9,0.1))
+d=c(0,1,seq(2,3.9,0.1))
+spl=c(0.009,0.007,0.021,0.035,0.054,0.105,0.149,0.27,0.4,0.538,0.695,0.827,0.909,0.97,0.99,
+      0.997,0.999,1,1,1,1,1)
+dip=c(0.001,0,0.001,0.001,0.002,0.005,0.009,0.019,0.041,
+      0.066,0.137,0.228,0.365,0.529,0.698,0.823,0.915,0.966,0.989,0.998,0.999,1)
+ker=c(0.05,0.049,0.103,0.121,0.142,0.175,0.238,0.284,0.355,
+      0.478,0.583,0.714,0.816,0.907,0.962,0.981,0.994,0.998,0.999,1,1,1)
+plot(d,spl,type="l",ylab='proportion rejection',main = "0.4N(0,1)+0.4N(d,1)+0.2N(0,9), n=800",lwd=2.5,lty=1,col='darkred')
 points(d,spl,pch=15,cex=0.6,col='darkred')
 lines(d,ker,lwd=2.5,lty=4,col='steelblue')
 points(d,ker,pch=4,cex=0.6,col='steelblue')
@@ -949,18 +1032,104 @@ abline(v=2,lty=9)
 legend("topleft",c('splines','kernel','diptest'),cex=1,lwd=2,pch=c(15,4,3),lty=c(2,4,3),col=c('darkred','steelblue','darkgreen'))
 
 
-apply()
+out1=readRDS("out2_norm_800.rds")
+methods = c("SI", "HY", "FM", "HH", "CH")
+method_cols = c("black", "orange", "purple", "brown", "magenta", "cyan4")
+for (k in seq_along(methods)) {
+  meth = methods[k]
+  tmp = out1[out1$method == meth, ]
+  tmp = tmp%>%arrange(d)
+  lines(tmp$d, tmp$power, lwd = 2, lty = 5, col = method_cols[k])
+  points(tmp$d, tmp$power, pch = 5, cex = 0.6, col = method_cols[k])
+}
+
+legend("topleft",
+       legend = c("splines", "ACR", "diptest", methods),
+       lwd = 2,
+       pch = c(15, 4, 3, rep(5, 6)),
+       lty = c(1, 4, 3, rep(5, 6)),
+       col = c("darkred", "steelblue", "darkgreen", method_cols))
+
+
+##########################sim3 ch
+
+
+
+par(mfrow=c(1,2), mar=c(4,4,4,4))
+d=c(8:30)
+d=10:30
+spl=c(0.015,0.016,0.017,0.028,0.036,00.057,0.085,0.171,0.25,0.378,0.536,0.656,0.762,
+      0.867,0.924,0.968,0.984,0.992,0.997,0.999,1)
+ker=c(0.066,0.069,0.067,0.089,0.084,0.088,0.116,0.161,0.204,0.294,
+      0.422,0.52,0.642,0.782,0.866,0.922,0.963,0.977,0.991,0.997,0.998)
+dip=c(0.002,0.003,0.002,0.006,0.003,0.004,0.017,0.029,0.061,0.088,
+      0.125,00.224,0.353,0.469,0.641,0.73,0.831,0.906,0.943,0.967,0.988)
+plot(d,spl,type="l",ylab='proportion rejection',main = "0.5chisq(5)+0.5chisq(d), n=200",lwd=2,lty=1,col='darkred')
+points(d,spl,pch=15,cex=0.6,col='darkred')
+lines(d,ker,lwd=2.5,lty=4,col='steelblue')
+points(d,ker,pch=4,cex=0.6,col='steelblue')
+lines(d,dip,lwd=2.5,lty=3,col='darkgreen')
+points(d,dip,pch=3,cex=0.6,col='darkgreen')
+abline(h=0.05,lty=9)
+abline(v=15.25,lty=9)
+#legend("topleft",c('splines','kernel','diptest'),cex=1,lwd=2,pch=c(15,4,3),lty=c(2,4,3),col=c('darkred','steelblue','darkgreen'))
+out1=readRDS("out3_chisq_200.rds")
+methods = c("SI", "HY", "FM", "HH", "CH")
+method_cols = c("black", "orange", "purple", "brown", "magenta", "cyan4")
+for (k in seq_along(methods)) {
+  meth = methods[k]
+  tmp = out1[out1$method == meth, ]
+  tmp = tmp%>%arrange(d)
+  lines(tmp$d, tmp$power, lwd = 2, lty = 5, col = method_cols[k])
+  points(tmp$d, tmp$power, pch = 5, cex = 0.6, col = method_cols[k])
+}
+
+legend("topleft",
+       legend = c("splines", "ACR", "diptest", methods),
+       lwd = 2,
+       pch = c(15, 4, 3, rep(5, 6)),
+       lty = c(1, 4, 3, rep(5, 6)),
+       col = c("darkred", "steelblue", "darkgreen", method_cols))
 
 
 
 
 
+d=c(10:24)
+spl=c(0.009,0.009,0.008,0.014,0.038,0.058,0.141,0.323,0.604,0.84,0.967,0.994,0.999,1,1)
+dip=c(0,0,0,0.002,0.002,0.003,0.006,0.021,0.08,0.242,0.466,0.738,0.914,0.974,0.998)
+ker=c(0.059,0.076,0.063,0.056,0.07,0.077,0.104,
+      0.22,0.427,0.667,0.856,0.955,0.992,0.998,1)
+plot(d,spl,type="l",ylab='proportion rejection',main = "0.5chisq(5)+0.5chisq(d), n=800",lwd=2.5,lty=1,col='darkred')
+points(d,spl,pch=15,cex=0.6,col='darkred')
+lines(d,ker,lwd=2.5,lty=4,col='steelblue')
+points(d,ker,pch=4,cex=0.6,col='steelblue')
+lines(d,dip,lwd=2.5,lty=3,col='darkgreen')
+points(d,dip,pch=3,cex=0.6,col='darkgreen')
+abline(h=0.05,lty=9)
+abline(v=15.25,lty=9)
+#legend("topleft",c('splines','kernel','diptest'),cex=1,lwd=2,pch=c(15,4,3),lty=c(2,4,3),col=c('darkred','steelblue','darkgreen'))
+out1=readRDS("out3_chisq_800.rds")
+methods = c("SI", "HY", "FM", "HH", "CH")
+method_cols = c("black", "orange", "purple", "brown", "magenta", "cyan4")
+for (k in seq_along(methods)) {
+  meth = methods[k]
+  tmp = out1[out1$method == meth, ]
+  tmp = tmp%>%arrange(d)
+  lines(tmp$d, tmp$power, lwd = 2, lty = 5, col = method_cols[k])
+  points(tmp$d, tmp$power, pch = 5, cex = 0.6, col = method_cols[k])
+}
+
+legend("topleft",
+       legend = c("splines", "ACR", "diptest", methods),
+       lwd = 2,
+       pch = c(15, 4, 3, rep(5, 6)),
+       lty = c(1, 4, 3, rep(5, 6)),
+       col = c("darkred", "steelblue", "darkgreen", method_cols))
 
 
 
-
-
-
-
-
-
+claw_200 = readRDS("out_claw_200.rds")
+claw_800
+cauchy_200
+cauchy_800
