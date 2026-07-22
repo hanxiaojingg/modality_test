@@ -4,7 +4,7 @@ library("doParallel")
 library("diptest")
 library("moments")
 library("multimode")
-bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=5,eps2=2,eps=NULL){
+bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=5,eps2=2,eps=NULL,v=1){
   nraw=length(y)
   s1=lower
   s2=upper
@@ -62,6 +62,7 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=5,eps2=2
     } else{
       lam = 10^(-3)*n^(-1/7)
     }
+    lam = lam/v
   }
   if(is.null(eps)){
     eps=ifelse(abs(skewness(y))>0.7,eps2,eps1)
