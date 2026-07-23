@@ -1129,7 +1129,21 @@ legend("topleft",
 
 
 
+
 claw_200 = readRDS("out_claw_200.rds")
-claw_800
-cauchy_200
-cauchy_800
+claw_800 = readRDS("out_claw_800.rds")
+claw_800 = rowMeans(claw_800[,1:300] < 0.05)
+cauchy_200 = readRDS("out_cauchy_200.rds")
+cauchy_800 = readRDS("out_cauchy_800.rds")
+method = c("SI","HY","FM","HH","CH","ACR","SPLINES","DIP")
+power = rbind(claw_200,claw_800,cauchy_200,cauchy_800)
+colnames(power) = method
+
+
+
+lam_claw_800 = readRDS("lam_claw_800.rds")
+rownames(lam_claw_800) = c('lamda/2','lambda/5','lambda/10','lambda/50','lambda/100','lambda/500','lambda/1000')
+rowMeans(lam_claw_800<0.05)
+
+
+

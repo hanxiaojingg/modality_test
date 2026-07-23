@@ -4,7 +4,18 @@ library("doParallel")
 library("diptest")
 library("moments")
 library("multimode")
-bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=5,eps2=2,eps=NULL,v=1){
+
+#############################################################
+#' @param y A vector of observed samples
+#' @param lower lower bound of the support
+#' @param upper upper bound of the support
+#' @param B the number of replicates used in the test
+#' @param lam the smoothing penalty parameter
+#' @param eps1 the penalty parameter that bound the slope to get rid of the 'flat spot' (for more skewed sample) 
+#' @param eps2 the penalty parameter that bound the slope to get rid of the 'flat spot' (for less skewed sample)
+#' @param eps customized penalty parameter for 'flat spot' slope
+##############################################################
+bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=5,eps2=2,eps=NULL){
   nraw=length(y)
   s1=lower
   s2=upper
@@ -62,7 +73,6 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=5,eps2=2
     } else{
       lam = 10^(-3)*n^(-1/7)
     }
-    lam = lam/v
   }
   if(is.null(eps)){
     eps=ifelse(abs(skewness(y))>0.7,eps2,eps1)
@@ -256,14 +266,20 @@ modet <- function(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam,eps){
 
 
 
+n = 200
+### generate sample from claw distribution
+y = benchden::rberdev(n, dnum=23)
+hist(y,breaks=20)
+
+### parallel environment setup for sampling
+ncores = max(1, detectCores() - 1)
+registerDoParallel(ncores)
+ans=bmodetest(y, B=1) ### set B=1 to skip sampling and get the fits
+stopImplicitCluster()
 
 
-
-registerDoParallel(3)
-n=1000
-y=rnorm(n)
-ans=bmodetest(y,lam1=n^(-5/9)*10^(5-kurtosis(y)/1))
 hist(y,freq=FALSE,breaks=30)
 lines(ans$yp,ans$fhat1,col=2)
 lines(ans$yp,ans$fhat2,col=3)
-stopImplicitCluster()
+ans$lam
+
