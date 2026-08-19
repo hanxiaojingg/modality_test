@@ -1360,35 +1360,36 @@ umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,cv=cv){
           cvec_train[i]=sum(bspl_train[,i])/n
           cvec_val[i]=sum(bspl_val[,i])/n
         }
-        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*t(D)%*%D%*%b0)
+        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+        qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
         ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
         alphahat1=ans1$solution
         bhat1=wmat%*%alphahat1+b0
-        err[l]=t(bhat1)%*%(hmat+lamt*t(D)%*%D)%*%bhat1-2*sum(cvec_val*bhat1)
+        err[l]=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec_val*bhat1)
       }
       crit_cv = c(crit_cv,mean(err))
     }
     lamt=lam_set[which(crit_cv==min(crit_cv))]
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
     # crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
     # amat1 <- amatl1[[which.min(crit)]][[1]]
     # epsvec <- amatl1[[which.min(crit)]][[2]]
     ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
-    cr1=t(bhat1)%*%(hmat+lamt*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1)
+    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1)
   }else{
     lamt=lam
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
     crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
     amat1 <- amatl1[[which.min(crit)]][[1]]
     epsvec <- amatl1[[which.min(crit)]][[2]]
     ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
-    cr1=t(bhat1)%*%(hmat+lamt*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1) 
+    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1) 
   }
   
   ans1=new.env()
@@ -1431,7 +1432,7 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
     crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
     amat2 <- amatl2[[which.min(crit)]]
     L = 10
-    lam_set = c(0.0001,0.001,0.01,0.1,1)
+    lam_set = c(0.00001,0.0001,0.001,0.01,0.1,1)
     fold_assignments <- sample(1:L, n, replace = TRUE)
     crit_cv = NULL
     for( lamt in lam_set){
@@ -1446,31 +1447,32 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
           cvec_train[i]=sum(bspl_train[,i])/n
           cvec_val[i]=sum(bspl_val[,i])/n
         }
-        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*t(D)%*%D%*%b0)
+        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+        qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
         ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
         alphahat2=ans2$solution
         bhat2=wmat%*%alphahat2+b0
-        err[l]=t(bhat2)%*%(hmat+lamt*t(D)%*%D)%*%bhat2-2*sum(cvec_val*bhat2)
+        err[l]=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec_val*bhat2)
       }
       crit_cv = c(crit_cv,mean(err))
     }
     lamt=lam_set[which(crit_cv==min(crit_cv))]
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
     ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
     alphahat2=ans2$solution
     bhat2=wmat%*%alphahat2+b0
-    cr2=t(bhat2)%*%(hmat+lamt*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
+    cr2=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
   }else{
     lamt=lam
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
     crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
     amat2 <- amatl2[[which.min(crit)]]
     ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
     alphahat2=ans2$solution
     bhat2=wmat%*%alphahat2+b0
-    cr2=t(bhat2)%*%(hmat+lamt*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
+    cr2=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
   }
   
   ans2=new.env()
@@ -1637,11 +1639,11 @@ sum(pvals<=0.05) ##0.34
 ############ mode on the endpoint ###############
 ######## use sample range as the support#########
 #################################################
-bmodetest_cv <- function(y,lower = NULL, upper = NULL,B=1000,eps1=.5,eps2=.2,eps=0.01,cv=TRUE){
+bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=.2,eps=0.01,cv=TRUE){
   n=length(y)
   s1=min(y)
   s2=max(y)
-  capk=round(nraw^(1/7)*12)
+  capk=round(n^(1/7)*12)
   qy=as.numeric(quantile(y,1:capk/(capk+1)))
   ####add more knots on both sides
   if(s1<qy[1]){
@@ -1769,7 +1771,6 @@ bmodetest_cv <- function(y,lower = NULL, upper = NULL,B=1000,eps1=.5,eps2=.2,eps
   ans$crit=c(ans1$crit,ans2$crit)
   ans$kurtosis=kurtosis(y)
   ans$skewness=skewness(y)
-  ans$truncated=(nraw!=n)
   ans
 }
 ##############
@@ -1813,35 +1814,36 @@ umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,cv=cv){
           cvec_train[i]=sum(bspl_train[,i])/n
           cvec_val[i]=sum(bspl_val[,i])/n
         }
-        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*t(D)%*%D%*%b0)
+        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+        qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
         ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
         alphahat1=ans1$solution
         bhat1=wmat%*%alphahat1+b0
-        err[l]=t(bhat1)%*%(hmat+lamt*t(D)%*%D)%*%bhat1-2*sum(cvec_val*bhat1)
+        err[l]=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec_val*bhat1)
       }
       crit_cv = c(crit_cv,mean(err))
     }
     lamt=lam_set[which(crit_cv==min(crit_cv))]
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
     # crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
     # amat1 <- amatl1[[which.min(crit)]][[1]]
     # epsvec <- amatl1[[which.min(crit)]][[2]]
     ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
-    cr1=t(bhat1)%*%(hmat+lamt*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1)
+    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1)
   }else{
     lamt=lam
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
     crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
     amat1 <- amatl1[[which.min(crit)]][[1]]
     epsvec <- amatl1[[which.min(crit)]][[2]]
     ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
-    cr1=t(bhat1)%*%(hmat+lamt*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1) 
+    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1) 
   }
   
   ans1=new.env()
@@ -1914,7 +1916,7 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
     crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
     amat2 <- amatl2[[which.min(crit)]]
     L = 10
-    lam_set = c(0.0001,0.001,0.01,0.1,1)
+    lam_set = c(0.00001,0.0001,0.001,0.01,0.1,1)
     fold_assignments <- sample(1:L, n, replace = TRUE)
     crit_cv = NULL
     for( lamt in lam_set){
@@ -1929,31 +1931,32 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
           cvec_train[i]=sum(bspl_train[,i])/n
           cvec_val[i]=sum(bspl_val[,i])/n
         }
-        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*t(D)%*%D%*%b0)
+        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+        qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
         ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
         alphahat2=ans2$solution
         bhat2=wmat%*%alphahat2+b0
-        err[l]=t(bhat2)%*%(hmat+lamt*t(D)%*%D)%*%bhat2-2*sum(cvec_val*bhat2)
+        err[l]=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec_val*bhat2)
       }
       crit_cv = c(crit_cv,mean(err))
     }
     lamt=lam_set[which(crit_cv==min(crit_cv))]
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
     ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
     alphahat2=ans2$solution
     bhat2=wmat%*%alphahat2+b0
-    cr2=t(bhat2)%*%(hmat+lamt*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
+    cr2=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
   }else{
     lamt=lam
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
     crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
     amat2 <- amatl2[[which.min(crit)]]
     ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
     alphahat2=ans2$solution
     bhat2=wmat%*%alphahat2+b0
-    cr2=t(bhat2)%*%(hmat+lamt*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
+    cr2=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
   }
   
   ans2=new.env()
@@ -1990,23 +1993,131 @@ modet <- function(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam,eps){
 }
 
 
-n = 200
+n = 100
 y = benchden::rberdev(n, dnum=23)/sd(y)
-ans_cv=bmodetest_cv(y,B=1)
+ans=bmodetest(y,B=1)
 hist(y,freq=FALSE,breaks=30)
-lines(ans_cv$yp,ans_cv$fhat1,col=2)
-lines(ans_cv$yp,ans_cv$fhat2,col=3)
-
+lines(ans$yp,ans$fhat1,col=2)
+lines(ans$yp,ans$fhat2,col=3)
+ans$lam
+ans$pvalue
 
 
 
 y = abs(rnorm(n,0,1))
 y=y/sd(y)
 registerDoParallel(9)
-ans_cv=bmodetest_cv(y,B=200)
+ans=bmodetest(y,B=100)
 stopImplicitCluster()
 hist(y,freq=FALSE,breaks=30)
-lines(ans_cv$yp,ans_cv$fhat1,col=2)
-lines(ans_cv$yp,ans_cv$fhat2,col=3)
-ans_cv$pvalue
+lines(ans$yp,ans$fhat1,col=2)
+lines(ans$yp,ans$fhat2,col=3)
+rug(ans$kn)
+ans$pvalue
+ans$lam
 
+##### sims #####
+##### claw #####
+set.seed(1234)
+pvals = matrix(100,7,400)
+lambdas = rep(0,400)
+n=200
+registerDoParallel(9)
+for(j in 1:400){
+  ### generate sample from claw distribution
+  y = benchden::rberdev(n, dnum=23)
+  y = y/sd(y)
+  ans = bmodetest(y,B=200)
+  lambdas[j] = ans$lam
+  pvals[1, j] = ans$pvalue
+  pvals[2, j] = modetest(y, method = "SI")$p.value
+  pvals[3, j] = modetest(
+    y,
+    method = "HY",
+    lowsup = quantile(y,0.01),
+    uppsup = quantile(y,0.99)
+  )$p.value
+  pvals[4, j] = modetest(y, method = "FM")$p.value
+  pvals[5, j] = modetest(y, method = "HH")$p.value
+  pvals[6, j] = modetest(y, method = "CH")$p.value
+  pvals[7, j] = modetest(y, method = "ACR")$p.value
+  print(j)
+}
+stopImplicitCluster()
+rowMeans(pvals < 0.05) 
+#0.3250 0.0025 0.1200 0.1400 0.0725 0.6675 0.5475
+
+
+##### sims #####
+##### monotone #####
+set.seed(1234)
+pvals = matrix(100,7,400)
+lambdas = rep(0,400)
+n=200
+registerDoParallel(9)
+for(j in 1:400){
+  ### generate sample from claw distribution
+  y = abs(rnorm(n,0,1))
+  y = y/sd(y)
+  ans = bmodetest(y,B=200)
+  lambdas[j] = ans$lam
+  pvals[1, j] = ans$pvalue
+  pvals[2, j] = modetest(y, method = "SI")$p.value
+  pvals[3, j] = modetest(
+    y,
+    method = "HY",
+    lowsup = quantile(y,0.01),
+    uppsup = quantile(y,0.99)
+  )$p.value
+  pvals[4, j] = modetest(y, method = "FM")$p.value
+  pvals[5, j] = modetest(y, method = "HH")$p.value
+  pvals[6, j] = modetest(y, method = "CH")$p.value
+  pvals[7, j] = modetest(y, method = "ACR")$p.value
+  print(j)
+}
+stopImplicitCluster()
+rowMeans(pvals < 0.05) 
+## 0.0175 0.0000 0.0650 0.0875 0.0000 0.0950 0.0650
+
+
+
+##### sims #####
+##### bathtub #####
+set.seed(1234)
+pvals = matrix(100,7,400)
+lambdas = rep(0,400)
+n=200
+registerDoParallel(9)
+for(j in 1:400){
+  ### generate sample from claw distribution
+  u = runif(n)
+  y = abs(rnorm(n,0,1))
+  y[u<0.4] = - abs(rnorm(sum(u<0.4),0,1)) + 4
+  #hist(y)
+  y = y/sd(y)
+  ans = bmodetest(y,B=200)
+  lambdas[j] = ans$lam
+  pvals[1, j] = ans$pvalue
+  pvals[2, j] = modetest(y, method = "SI")$p.value
+  pvals[3, j] = modetest(
+    y,
+    method = "HY",
+    lowsup = quantile(y,0.01),
+    uppsup = quantile(y,0.99)
+  )$p.value
+  pvals[4, j] = modetest(y, method = "FM")$p.value
+  pvals[5, j] = modetest(y, method = "HH")$p.value
+  pvals[6, j] = modetest(y, method = "CH")$p.value
+  pvals[7, j] = modetest(y, method = "ACR")$p.value
+  print(j)
+}
+stopImplicitCluster()
+rowMeans(pvals < 0.05) 
+##
+
+
+
+hist(y,freq=FALSE,breaks=30)
+lines(ans$yp,ans$fhat1,col=2)
+lines(ans$yp,ans$fhat2,col=3)
+ans$pvalue
