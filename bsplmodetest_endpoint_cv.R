@@ -203,7 +203,7 @@ umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,cv=cv){
         ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
         alphahat1=ans1$solution
         bhat1=wmat%*%alphahat1+b0
-        err[l]=t(bhat1)%*%(hmat+t(D)%*%D)%*%bhat1-2*sum(cvec_val*bhat1)
+        err[l]=t(bhat1)%*%hmat%*%bhat1-2*sum(cvec_val*bhat1)
       }
       crit_cv = c(crit_cv,mean(err))
     }
@@ -300,7 +300,7 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
     crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
     amat2 <- amatl2[[which.min(crit)]]
     L = 10
-    lam_set = c(0.0001,0.001,0.01,0.1,1,10,100)
+    lam_set = c(0.0001,0.001,0.01,0.1,1)
     fold_assignments <- sample(1:L, n, replace = TRUE)
     crit_cv = NULL
     for( lamt in lam_set){
@@ -322,7 +322,7 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
         ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
         alphahat2=ans2$solution
         bhat2=wmat%*%alphahat2+b0
-        err[l]=t(bhat2)%*%(hmat+t(D)%*%D)%*%bhat2-2*sum(cvec_val*bhat2)
+        err[l]=t(bhat2)%*%hmat%*%bhat2-2*sum(cvec_val*bhat2)
       }
       crit_cv = c(crit_cv,mean(err))
     }
