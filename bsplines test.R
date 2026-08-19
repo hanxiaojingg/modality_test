@@ -210,7 +210,7 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL){
     }
   }
   trips=trips[1:nr,]
-  amat2=list()
+  amatl2=list()
   for(i in 1:nr){
     amat=matrix(0,m+1,m)
     amat[1:(m-1),1:m]=slopes
@@ -218,13 +218,13 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL){
     amat[(trips[i,3]):(m-1),]=-slopes[(trips[i,3]):(m-1),]
     amat[m,1]=1
     amat[m+1,m]=1
-    amat2[[i]]=amat
+    amatl2[[i]]=amat
   }
   lamt=lam
   zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*t(D)%*%D%*%b0)
   qmat=t(wmat)%*%(hmat+lamt*t(D)%*%D)%*%wmat 
-  crit<-lapply(amat2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
-  amat2 <- amat2[[which.min(crit)]]
+  crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
+  amat2 <- amatl2[[which.min(crit)]]
   ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
   alphahat2=ans2$solution
   bhat2=wmat%*%alphahat2+b0
