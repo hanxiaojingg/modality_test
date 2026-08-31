@@ -1639,10 +1639,28 @@ sum(pvals<=0.05) ##0.34
 ############ mode on the endpoint ###############
 ######## use sample range as the support#########
 #################################################
-bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=.2,eps=0.01,cv=TRUE){
-  n=length(y)
-  s1=min(y)
-  s2=max(y)
+bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=.2,eps=0.01,cv=TRUE,parallel=FALSE){
+  n = length(y)
+  y = sort(y)
+  if(is.null(lower)){
+    if(n > 5){
+      s1 = min(y) - (y[5] - y[1])/4
+    } else {
+      s1 = min(y)
+    }
+  } else {
+    s1 = lower
+  }
+  
+  if(is.null(upper)){
+    if(n > 5){
+      s2 = y[n] + (y[n] - y[n-4])/4
+    } else {
+      s2 = max(y)
+    }
+  } else {
+    s2 = upper
+  }
   capk=round(n^(1/7)*12)
   qy=as.numeric(quantile(y,1:capk/(capk+1)))
   ####add more knots on both sides
@@ -1752,10 +1770,17 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=
       }
       cdf1=cdf1-min(cdf1)
       cdf1=cdf1/cdf1[4001]
-      outtb <- foreach(t=1:B,.combine = 'rbind') %dopar%{
+      one_boot <- function(t) {
         yb=sapply(1:n,function(o){u=runif(1);id=min(which(u<cdf1));alp=(cdf1[id]-u)/(cdf1[id]-cdf1[id-1]);alp*yp[id-1]+(1-alp)*yp[id]})
         modet(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam=ans2$lam,eps=eps)
-      } 
+      }
+      if(parallel){
+        outtb <- foreach(t=1:B,.combine='c') %dopar% {
+          one_boot(t)
+        }
+      } else {
+        outtb <- sapply(1:B, one_boot)
+      }
       pvalue=sum(outtb>t1)/B
     }
   }
@@ -1799,8 +1824,8 @@ umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,cv=cv){
     epsvec <- amatl1[[which.min(crit)]][[2]]
     ## number of folds
     L = 10
-    lam_set = c(0.0001,0.001,0.01,0.1,1)
-    fold_assignments <- sample(1:L, n, replace = TRUE)
+    lam_set = c(0.0001,0.001,0.01,0.1,1,10)
+    fold_assignments <- sample(rep(1:L, length.out=n))
     crit_cv = NULL
     for( lamt in lam_set){
       err = rep(0,L)
@@ -1810,16 +1835,18 @@ umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,cv=cv){
         bspl_train = bspl[fold_assignments != l,]
         bspl_val =  bspl[fold_assignments == l,]
         cvec_train=cvec_val=1:m
+        n_train = nrow(bspl_train)
+        n_val   = nrow(bspl_val)
         for(i in 1:m){
-          cvec_train[i]=sum(bspl_train[,i])/n
-          cvec_val[i]=sum(bspl_val[,i])/n
+          cvec_train[i] = sum(bspl_train[,i]) / n_train
+          cvec_val[i]   = sum(bspl_val[,i]) / n_val
         }
-        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
-        qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
+        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n_train^(-1/7)*t(D)%*%D%*%b0)
+        qmat=t(wmat)%*%(hmat+lamt*n_train^(-1/7)*t(D)%*%D)%*%wmat 
         ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
         alphahat1=ans1$solution
         bhat1=wmat%*%alphahat1+b0
-        err[l]=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec_val*bhat1)
+        err[l]=t(bhat1)%*%hmat%*%bhat1-2*sum(cvec_val*bhat1)
       }
       crit_cv = c(crit_cv,mean(err))
     }
@@ -1910,14 +1937,15 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
     amat[1:j,]=-slopes[1:j,]
     amatl2[[nr]]=amat
   }
+  trips = trips[1:nr,,drop=FALSE]
   if(cv | is.null(lam)){
     zvec=t(wmat)%*%(cvec-hmat%*%b0-0.1*n^(-1/7)*t(D)%*%D%*%b0)
     qmat=t(wmat)%*%(hmat+0.1*n^(-1/7)*t(D)%*%D)%*%wmat 
     crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
     amat2 <- amatl2[[which.min(crit)]]
     L = 10
-    lam_set = c(0.00001,0.0001,0.001,0.01,0.1,1)
-    fold_assignments <- sample(1:L, n, replace = TRUE)
+    lam_set = c(0.00001,0.0001,0.001,0.01,0.1,1,10,100)
+    fold_assignments <- sample(rep(1:L, length.out=n))
     crit_cv = NULL
     for( lamt in lam_set){
       err = rep(0,L)
@@ -1927,16 +1955,18 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
         bspl_train = bspl[fold_assignments != l,]
         bspl_val =  bspl[fold_assignments == l,]
         cvec_train=cvec_val=1:m
+        n_train = nrow(bspl_train)
+        n_val   = nrow(bspl_val)
         for(i in 1:m){
-          cvec_train[i]=sum(bspl_train[,i])/n
-          cvec_val[i]=sum(bspl_val[,i])/n
+          cvec_train[i] = sum(bspl_train[,i]) / n_train
+          cvec_val[i]   = sum(bspl_val[,i]) / n_val
         }
-        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
-        qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
+        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n_train^(-1/7)*t(D)%*%D%*%b0)
+        qmat=t(wmat)%*%(hmat+lamt*n_train^(-1/7)*t(D)%*%D)%*%wmat 
         ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
         alphahat2=ans2$solution
         bhat2=wmat%*%alphahat2+b0
-        err[l]=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec_val*bhat2)
+        err[l]=t(bhat2)%*%hmat%*%bhat2-2*sum(cvec_val*bhat2)
       }
       crit_cv = c(crit_cv,mean(err))
     }
@@ -2121,3 +2151,323 @@ hist(y,freq=FALSE,breaks=30)
 lines(ans$yp,ans$fhat1,col=2)
 lines(ans$yp,ans$fhat2,col=3)
 ans$pvalue
+
+
+
+###############################################
+######### diagnose: lambda vs amat2 ###########
+###############################################
+findamat2 <- function(y,lower = NULL, upper = NULL){
+  n = length(y)
+  y = sort(y)
+  if(is.null(lower)){
+    if(n > 5){
+      s1 = min(y) - (y[5] - y[1])/4
+    } else {
+      s1 = min(y)
+    }
+  } else {
+    s1 = lower
+  }
+  
+  if(is.null(upper)){
+    if(n > 5){
+      s2 = y[n] + (y[n] - y[n-4])/4
+    } else {
+      s2 = max(y)
+    }
+  } else {
+    s2 = upper
+  }
+  capk=round(n^(1/7)*12)
+  qy=as.numeric(quantile(y,1:capk/(capk+1)))
+  ####add more knots on both sides
+  if(s1<qy[1]){
+    k1=min(floor(log((qy[1]-s1)/3/(qy[2]-qy[1])+1, 3/2) -1 ), round(capk/8))
+    if(k1<2){
+      qy = c(qy,s1)
+      if((qy[1]-s1)/(qy[2]-qy[1])>=2) qy = c(qy,qy[1]-(qy[1]-s1)/2)
+    }else{
+      q1 = ((qy[1]-s1)/(qy[2]-qy[1]))^(1/(k1+1))
+      qy = c(qy, qy[1] - (qy[2]-qy[1])*q1^(1:(k1)), s1)
+    }
+  }
+  if(s2>qy[capk]){
+    k2=min(floor(log((s2-qy[capk])/3/(qy[capk]-qy[capk-1])+1, 3/2) - 1), round(capk/8))
+    if(k2<2){
+      qy=c(qy,s2)
+      if((s2-qy[capk])/(qy[capk]-qy[capk-1])>=2) qy = c(qy,(s2-qy[capk])/2+qy[capk])
+    }else{
+      q2 = ((s2-qy[capk])/(qy[capk]-qy[capk-1]))^(1/(k2+1))
+      qy = c(qy, (qy[capk]-qy[capk-1])*q2^(1:(k2))+qy[capk], s2)
+    }
+  }
+  qy = sort(qy)
+  ####add more knots between the two modes
+  d=min(diff(qy))
+  dd=floor(diff(qy)/min(diff(qy)))
+  m1=min(which(dd==1))
+  m2=max(which(dd==1))
+  if(sum(dd[m1:m2]>2)>0){ for(i in which(dd[m1:m2]>2)){qy=c(qy,(qy[m1+i-1]+qy[m1+i])/2)}
+  }
+  kn=sort(qy)
+  
+  m=length(kn)+1
+  bspl=bSpline(y,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
+  yp=0:4000/4000*(s2-s1)+s1
+  s1=min(s1,min(yp))
+  s2=max(s2,max(yp))
+  bp=bSpline(yp,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
+  slopes=bSpline(kn,degree=2,derivs=1,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
+  D2=bSpline(kn,degree=2,derivs=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
+  d=(s2-s1)/m
+  ###  make all basis functions integrate to one
+  dp=yp[2]-yp[1]
+  avec=1:m
+  for(i in 1:m){avec[i]=sum(bp[,i])*dp}
+  for(i in 1:m){
+    bspl[,i]=bspl[,i]/avec[i]
+    bp[,i]=bp[,i]/avec[i]
+    slopes[,i]=slopes[,i]/avec[i]
+    D2[,i]=D2[,i]/avec[i]
+  }
+  av1=avec
+  avec=rep(1,m)
+  hmat=matrix(nrow=m,ncol=m)
+  cvec=1:m
+  for(i in 1:m){
+    for(j in i:m){
+      pr=bp[,i]*bp[,j]
+      hmat[i,j]=sum(pr)*dp
+      hmat[j,i]=hmat[i,j]
+    }
+    cvec[i]=sum(bspl[,i])/n
+  }
+  b0=rep(1/m,m)
+  
+  wmat=matrix(0,nrow=m,ncol=m-1)
+  for(i in 1:(m-1)){wmat[i,i]=-1;wmat[i+1,i]=1}
+  
+  D1=matrix(0,m-2,m-1)
+  for(i in 1:(m-2)){D1[i,i]=-1;D1[i,i+1]=1}
+  D=D1%*%D2*d^(5/2)
+
+  ## triplets (i,j,k) where i<j<k 
+  trips=matrix(0,nrow=choose(m,3)*2,ncol=3)
+  nr=0
+  amatl2=list()
+  ## modes and antimodes between t_i and t_{i+1}, t_j and t_{j+1}, t_k and t_{k+1}, k<=m-2
+  for(i in 1:(m-6)){
+    for(j in (i+2):(m-4)){
+      for(k in (j+2):(m-2)){
+        nr=nr+1
+        trips[nr,]=c(i,j,k)
+        amat=matrix(0,m+1,m)
+        amat[1:(m-1),1:m]=slopes
+        amat[(i+1):j,]=-slopes[(i+1):j,]
+        amat[k:(m-1),]=-slopes[k:(m-1),]
+        amat[m,1]=1
+        amat[m+1,m]=1
+        amatl2[[nr]]=amat
+      }
+    }
+  }
+  ## modes at the lower endpoint, i.e. i=1 and mode is at t_1
+  for(j in 3:(m-4)){
+    for(k in (j+2):(m-2)){
+      nr=nr+1
+      trips[nr,]=c(1000,j,k)
+      amat=matrix(0,m,m)
+      amat[1:(m-1),1:m]=slopes
+      amat[1:j,]=-slopes[1:j,]
+      amat[(k+1):(m-1),]=-slopes[(k+1):(m-1),]
+      amat[m,m]=1
+      amatl2[[nr]]=amat
+    }
+  }
+  ## modes at upper endpoint, i.e. k=m-2 and mode is at t_{m-1}
+  for(i in 1:(m-6)){
+    for(j in (i+2):(m-4)){
+      nr=nr+1
+      trips[nr,]=c(i,j,2000)
+      amat=matrix(0,m,m)
+      amat[1:(m-1),1:m]=slopes
+      amat[(i+1):j,]=-slopes[(i+1):j,]
+      amat[m,1]=1
+      amatl2[[nr]]=amat
+    }
+  }
+  ## both modes at the endpoints
+  for(j in 3:(m-4)){
+    nr=nr+1
+    trips[nr,]=c(1000,j,2000)
+    amat=matrix(0,m-1,m)
+    amat[1:(m-1),1:m]=slopes
+    amat[1:j,]=-slopes[1:j,]
+    amatl2[[nr]]=amat
+  }
+  trips = trips[1:nr,,drop=FALSE]
+  lam_set = c(0.00001,0.0001,0.001,0.01,0.1,1,10,100)
+  
+  amatindex = numeric(length(lam_set))
+  mincrit = numeric(length(lam_set))
+  secondcrit = numeric(length(lam_set))
+  
+  for(ll in seq_along(lam_set)){
+    lamt = lam_set[ll]
+    zvec = t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
+    qmat = t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat
+    crit = sapply(amatl2, function(x){ans = quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0)
+      ans$value})
+    ord = order(crit)
+    amatindex[ll] = ord[1]
+    mincrit[ll] = crit[ord[1]]
+    secondcrit[ll] = crit[ord[2]]
+  }
+  out = data.frame(
+    lam = lam_set,
+    effective_lam = lam_set*n^(-1/7),
+    amatindex = amatindex,
+    i = trips[amatindex,1],
+    j = trips[amatindex,2],
+    k = trips[amatindex,3],
+    mincrit = round(mincrit,5),
+    secondcrit = round(secondcrit,5)
+  )
+  return(out)
+}
+findamat2(y)
+##################################
+set.seed(123)
+n <- 200
+R <- 2
+## generators
+dist_list <- list(
+  # normal = function(n) {rnorm(n)},
+  # half_normal = function(n) {abs(rnorm(n))},
+  # exponential = function(n) {rexp(n)},
+  # gamma = function(n) {rgamma(n, shape = 2)},
+  # t3 = function(n) {rt(n, df = 3)},
+  # bimodal = function(n) {z <- rbinom(n, 1, 0.5)
+  #   rnorm(n, mean = ifelse(z == 1, -1.5, 1.5), sd = 0.7)
+  # },
+  claw = function(n) {benchden::rberdev(n, dnum = 23)},
+  bathtub = function(n) {
+    u <- runif(n)
+    y <- abs(rnorm(n))
+    id <- u < 0.5
+    y[id] <- -abs(rnorm(sum(id))) + 4
+    y
+  },
+  normal_mix_1 = function(n) {
+    z <- rbinom(n, 1, 0.5)
+    rnorm(n,
+          mean = ifelse(z == 1, -1.5, 1.5),
+          sd = 0.7)
+  },
+  ## symmetric, modes closer together
+  normal_mix_2 = function(n) {
+    z <- rbinom(n, 1, 0.5)
+    rnorm(n,
+          mean = ifelse(z == 1, -1, 1),
+          sd = 0.7)
+  },
+  ## unequal mixture weights
+  normal_mix_3 = function(n) {
+    z <- rbinom(n, 1, 0.3)
+    rnorm(n,
+          mean = ifelse(z == 1, -2, 1),
+          sd = 0.6)
+  },
+  ## different variances
+  normal_mix_4 = function(n) {
+    z <- rbinom(n, 1, 0.5)
+    y <- numeric(n)
+    y[z == 1] <- rnorm(sum(z == 1), -2, 0.4)
+    y[z == 0] <- rnorm(sum(z == 0),  1, 1)
+    y
+  },
+  chisq_mix_1 = function(n) {
+    z <- rbinom(n, 1, 0.5)
+    y <- numeric(n)
+    y[z == 1] <- rchisq(sum(z == 1), df = 2)
+    y[z == 0] <- rchisq(sum(z == 0), df = 5) + 6
+    y
+  },
+  
+  ## unequal weights
+  chisq_mix_2 = function(n) {
+    z <- rbinom(n, 1, 0.3)
+    y <- numeric(n)
+    y[z == 1] <- rchisq(sum(z == 1), df = 2)
+    y[z == 0] <- rchisq(sum(z == 0), df = 4) + 7
+    y
+  },
+  
+  ## components with different skewness
+  chisq_mix_3 = function(n) {
+    z <- rbinom(n, 1, 0.5)
+    y <- numeric(n)
+    y[z == 1] <- rchisq(sum(z == 1), df = 1)
+    y[z == 0] <- rchisq(sum(z == 0), df = 8) + 5
+    y
+  },
+  ## normal + gamma
+  normal_gamma_mix = function(n) {
+    z <- rbinom(n, 1, 0.5)
+    y <- numeric(n)
+    y[z == 1] <- rnorm(sum(z == 1), 0, 0.6)
+    y[z == 0] <- rgamma(sum(z == 0), shape = 3, scale = 0.5) + 3
+    y
+  },
+  
+  ## gamma mixture
+  gamma_mix = function(n) {
+    z <- rbinom(n, 1, 0.5)
+    y <- numeric(n)
+    y[z == 1] <- rgamma(sum(z == 1), shape = 2, scale = 0.5)
+    y[z == 0] <- rgamma(sum(z == 0), shape = 5, scale = 0.4) + 4
+    y
+  }
+)
+all_results <- list()
+for(dist_name in names(dist_list)) {
+  cat("Running:", dist_name, "\n")
+  dist_results <- list()
+  for(r in 1:R) {
+    y <- dist_list[[dist_name]](n)
+    y <- y / sd(y)
+    temp <- findamat2(y)
+    temp$distribution <- dist_name
+    temp$replicate <- r
+    dist_results[[r]] <- temp
+  }
+  all_results[[dist_name]] <- do.call(rbind, dist_results)
+}
+results <- do.call(rbind, all_results)
+rownames(results) <- NULL
+results
+
+
+
+amat_change <- aggregate(
+  amatindex ~ distribution + replicate,
+  data = results,
+  FUN = function(x) length(unique(x))
+)
+
+names(amat_change)[3] <- "n_unique_amat"
+
+aggregate(
+  n_unique_amat ~ distribution,
+  data = amat_change,
+  FUN = function(x) {
+    c(
+      mean = mean(x),
+      median = median(x),
+      max = max(x)
+    )
+  }
+)
+
+
