@@ -21,10 +21,28 @@ library("multimode")
 #' @param eps customized penalty parameter for 'flat spot' slope
 #' @param cv default = TRUE, whether use cross validation to find lambda
 ##############################################################
-bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=.2,eps=0.01,cv=TRUE){
-  n=length(y)
-  s1=min(y)
-  s2=max(y)
+bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
+  n = length(y)
+  y = sort(y)
+  if(is.null(lower)){
+    if(n > 5){
+      s1 = min(y) - (y[5] - y[1])/4
+    } else {
+      s1 = min(y)
+    }
+  } else {
+    s1 = lower
+  }
+  
+  if(is.null(upper)){
+    if(n > 5){
+      s2 = y[n] + (y[n] - y[n-4])/4
+    } else {
+      s2 = max(y)
+    }
+  } else {
+    s2 = upper
+  }
   capk=round(n^(1/7)*12)
   qy=as.numeric(quantile(y,1:capk/(capk+1)))
   ####add more knots on both sides
@@ -58,22 +76,6 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=
   }
   kn=sort(qy)
   
-  # if(!cv & is.null(lam)){
-  #   K = kurtosis(y)
-  #   if(K<2){
-  #     lam = 10^2*n^(-1/7)
-  #   } else if(K>2 & K<5){
-  #     lam = 10^(4-K)*n^(-1/7)
-  #   } else if(K>5 & K<9){
-  #     lam = 10^(3/2-K/2)*n^(-1/7)
-  #   } else{
-  #     lam = 10^(-3)*n^(-1/7)
-  #   }
-  # }
-  if(is.null(eps)){
-    eps=ifelse(abs(skewness(y))>0.7,eps2,eps1)
-  }else{eps1=eps2=eps}
-  
   m=length(kn)+1
   bspl=bSpline(y,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   yp=0:4000/4000*(s2-s1)+s1
@@ -95,27 +97,95 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=
   }
   av1=avec
   avec=rep(1,m)
-  hmat=matrix(nrow=m,ncol=m)
-  cvec=1:m
-  for(i in 1:m){
-    for(j in i:m){
-      pr=bp[,i]*bp[,j]
-      hmat[i,j]=sum(pr)*dp
-      hmat[j,i]=hmat[i,j]
-    }
-    cvec[i]=sum(bspl[,i])/n
-  }
+  hmat=crossprod(bp) * dp
   b0=rep(1/m,m)
-  
+  cvec=colMeans(bspl)
   wmat=matrix(0,nrow=m,ncol=m-1)
   for(i in 1:(m-1)){wmat[i,i]=-1;wmat[i+1,i]=1}
   
   D1=matrix(0,m-2,m-1)
   for(i in 1:(m-2)){D1[i,i]=-1;D1[i,i+1]=1}
   D=D1%*%D2*d^(5/2)
+  
+  ## unimadal amat list
+  amatl1=list()
+  ## mode between t_k and t_{k+1} where k=1,...,m-2
+  for(k in 1:(m-2)){
+    amat=matrix(0,nrow=m+1,ncol=m)
+    amat[1:k,]=slopes[1:k,]
+    amat[(k+1):(m-1),]=-slopes[(k+1):(m-1),]
+    amat[m,1]=1
+    amat[m+1,m]=1
+    epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
+    amatl1[[k]]=list(amatw=t(amat%*%wmat), epsbvec=epsvec-amat%*%b0)
+  }
+  ## for amat_{m-1} and amat_m
+  amatmm1 = rbind(-slopes,c(rep(0,m-1),1))
+  amatm = rbind(slopes,c(1, rep(0,m-1)))
+  amatl1[[m-1]]=list(amatw = t(amatmm1%*%wmat), epsbvec = rep(0,m)-amatmm1%*%b0 )
+  amatl1[[m]]=list(amatw = t(amatm%*%wmat), epsbvec = rep(0,m)-amatm%*%b0)
+  ## bimodal amat list
+  ## triplets (i,j,k) where i<j<k 
+  trips=matrix(0,nrow=choose(m,3),ncol=3)
+  nr=0
+  amatl2=list()
+  ## modes and antimodes between t_i and t_{i+1}, t_j and t_{j+1}, t_k and t_{k+1}, k<=m-2
+  for(i in 1:(m-6)){
+    for(j in (i+2):(m-4)){
+      for(k in (j+2):(m-2)){
+        nr=nr+1
+        trips[nr,]=c(i,j,k)
+        amat=matrix(0,m+1,m)
+        amat[1:(m-1),1:m]=slopes
+        amat[(i+1):j,]=-slopes[(i+1):j,]
+        amat[k:(m-1),]=-slopes[k:(m-1),]
+        amat[m,1]=1
+        amat[m+1,m]=1
+        amatl2[[nr]]=list(amatw = t(amat %*% wmat), bvec = -amat %*% b0)
+      }
+    }
+  }
+  ## modes at the lower endpoint, i.e. i=1 and mode is at t_1
+  for(j in 3:(m-4)){
+    for(k in (j+2):(m-2)){
+      nr=nr+1
+      trips[nr,]=c(1,j,k)
+      amat=matrix(0,m,m)
+      amat[1:(m-1),1:m]=slopes
+      amat[1:j,]=-slopes[1:j,]
+      amat[(k+1):(m-1),]=-slopes[(k+1):(m-1),]
+      amat[m,m]=1
+      amatl2[[nr]]=list(amatw = t(amat %*% wmat), bvec = -amat %*% b0)
+    }
+  }
+  ## modes at upper endpoint, i.e. k=m-2 and mode is at t_{m-1}
+  for(i in 1:(m-6)){
+    for(j in (i+2):(m-4)){
+      nr=nr+1
+      trips[nr,]=c(i,j,m-2)
+      amat=matrix(0,m,m)
+      amat[1:(m-1),1:m]=slopes
+      amat[(i+1):j,]=-slopes[(i+1):j,]
+      amat[m,1]=1
+      amatl2[[nr]]=list(amatw = t(amat %*% wmat), bvec = -amat %*% b0)
+    }
+  }
+  ## both modes at the endpoints
+  for(j in 3:(m-4)){
+    nr=nr+1
+    trips[nr,]=c(1,j,m-2)
+    amat=matrix(0,m-1,m)
+    amat[1:(m-1),1:m]=slopes
+    amat[1:j,]=-slopes[1:j,]
+    amatl2[[nr]]=list(amatw = t(amat %*% wmat), bvec = -amat %*% b0)
+  }
+  trips = trips[1:nr,,drop=FALSE]
+  
+  
   ##  get unimodal
-  ans2=bmfit(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam,cv=cv)
-  ans1=umfit(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam = ans2$lam,eps=eps, cv=FALSE)
+  DtD = crossprod(D)
+  ans2=bmfit(y,kn,amatl2,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam,cv=cv)
+  ans1=umfit(y,kn,amatl1,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam = ans2$lam,eps=eps, cv=FALSE)
   t1=as.numeric((ans1$crit-ans2$crit))
   #t2=as.numeric((ans1$crit-ans2$crit)/abs(ans1$crit))
   fhat2=round(bp%*%ans2$bhat,10)
@@ -134,10 +204,17 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=
       }
       cdf1=cdf1-min(cdf1)
       cdf1=cdf1/cdf1[4001]
-      outtb <- foreach(t=1:B,.combine = 'rbind') %dopar%{
+      one_boot <- function(t) {
         yb=sapply(1:n,function(o){u=runif(1);id=min(which(u<cdf1));alp=(cdf1[id]-u)/(cdf1[id]-cdf1[id-1]);alp*yp[id-1]+(1-alp)*yp[id]})
-        modet(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam=ans2$lam,eps=eps)
-      } 
+        modet(yb,kn,amatl1,amatl2,hmat,slopes,b0,wmat,DtD,bspl,av1,bp,lam=ans2$lam,eps=eps)
+      }
+      if(parallel){
+        outtb <- foreach(t=1:B,.combine='c') %dopar% {
+          one_boot(t)
+        }
+      } else {
+        outtb <- sapply(1:B, one_boot)
+      }
       pvalue=sum(outtb>t1)/B
     }
   }
@@ -156,51 +233,35 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps1=.5,eps2=
   ans
 }
 ##############
-umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,cv=cv){	
+umfit=function(y,kn,amatl1,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam=NULL,eps,cv=cv){	
   n <- length(y)
-  m=length(kn)+1
-  amatl1=list()
-  ## mode between t_k and t_{k+1} where k=1,...,m-2
-  for(k in 1:(m-2)){
-    amat=matrix(0,nrow=m+1,ncol=m)
-    amat[1:k,]=slopes[1:k,]
-    amat[(k+1):(m-1),]=-slopes[(k+1):(m-1),]
-    amat[m,1]=1
-    amat[m+1,m]=1
-    epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
-    amatl1[[k]]=list(amat=amat, epsvec=epsvec)
-  }
-  amatl1[[m-1]]=list(amat = rbind(-slopes,c(rep(0,m-1),1)), epsvec = rep(0,m))
-  amatl1[[m]]=list(amat = rbind(slopes,c(1, rep(0,m-1))), epsvec = rep(0,m))
+  m = length(kn)+1
   ## cross validation
   if(cv | is.null(lam)){
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-0.1*n^(-1/7)*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+0.1*n^(-1/7)*t(D)%*%D)%*%wmat 
-    crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
-    amat1 <- amatl1[[which.min(crit)]][[1]]
-    epsvec <- amatl1[[which.min(crit)]][[2]]
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-0.1*n^(-1/7)*DtD%*%b0)
+    qmat=t(wmat)%*%(hmat+0.1*n^(-1/7)*DtD)%*%wmat 
+    crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,x[[1]],x[[2]]);ans$value})
+    amatw1 <- amatl1[[which.min(crit)]][[1]]
+    epsbvec <- amatl1[[which.min(crit)]][[2]]
     ## number of folds
     L = 10
-    lam_set = c(0.0001,0.001,0.01,0.1,1)
-    fold_assignments <- sample(1:L, n, replace = TRUE)
+    lam_set = c(0.0001,0.001,0.01,0.1,1,10)
+    fold_assignments <- sample(rep(1:L, length.out=n))
     crit_cv = NULL
     for( lamt in lam_set){
       err = rep(0,L)
       for (l in 1:L) {
-        train_data <- y[fold_assignments != l]
-        val_data   <- y[fold_assignments == l]
+        # train_data <- y[fold_assignments != l]
+        # val_data   <- y[fold_assignments == l]
         bspl_train = bspl[fold_assignments != l,]
         bspl_val =  bspl[fold_assignments == l,]
         n_train = nrow(bspl_train)
         n_val   = nrow(bspl_val)
-        cvec_train=cvec_val=1:m
-        for(i in 1:m){
-          cvec_train[i] = sum(bspl_train[,i]) / n_train
-          cvec_val[i]   = sum(bspl_val[,i]) / n_val
-        }
-        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
-        qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
-        ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
+        cvec_train = colMeans(bspl_train)
+        cvec_val = colMeans(bspl_val)
+        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n_train^(-1/7)*DtD%*%b0)
+        qmat=t(wmat)%*%(hmat+lamt*n_train^(-1/7)*DtD)%*%wmat 
+        ans1=solve.QP(qmat,zvec,amatw1,epsbvec)
         alphahat1=ans1$solution
         bhat1=wmat%*%alphahat1+b0
         err[l]=t(bhat1)%*%hmat%*%bhat1-2*sum(cvec_val*bhat1)
@@ -208,26 +269,26 @@ umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,cv=cv){
       crit_cv = c(crit_cv,mean(err))
     }
     lamt=lam_set[which(crit_cv==min(crit_cv))]
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*DtD%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*DtD)%*%wmat 
     # crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
     # amat1 <- amatl1[[which.min(crit)]][[1]]
     # epsvec <- amatl1[[which.min(crit)]][[2]]
-    ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
+    ans1=solve.QP(qmat,zvec,amatw1,epsbvec)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
-    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1)
+    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*DtD)%*%bhat1-2*sum(cvec*bhat1)
   }else{
     lamt=lam
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
-    crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
-    amat1 <- amatl1[[which.min(crit)]][[1]]
-    epsvec <- amatl1[[which.min(crit)]][[2]]
-    ans1=solve.QP(qmat,zvec,t(amat1%*%wmat),epsvec-amat1%*%b0)
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*DtD%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*DtD)%*%wmat 
+    crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,x$amatw,x$epsbvec);ans$value})
+    amatw1 <- amatl1[[which.min(crit)]][[1]]
+    epsbvec <- amatl1[[which.min(crit)]][[2]]
+    ans1=solve.QP(qmat,zvec,amatw1,epsbvec)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
-    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat1-2*sum(cvec*bhat1) 
+    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*DtD)%*%bhat1-2*sum(cvec*bhat1) 
   }
   
   ans1=new.env()
@@ -237,89 +298,33 @@ umfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,eps,cv=cv){
   ans1
 }
 ############################################################################
-bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
-  n=length(y)
-  m=dim(slopes)[2]
-  ## triplets (i,j,k) where i<j<k 
-  trips=matrix(0,nrow=choose(m,3),ncol=3)
-  nr=0
-  amatl2=list()
-  ## modes and antimodes between t_i and t_{i+1}, t_j and t_{j+1}, t_k and t_{k+1}, k<=m-2
-  for(i in 1:(m-6)){
-    for(j in (i+2):(m-4)){
-      for(k in (j+2):(m-2)){
-        nr=nr+1
-        trips[nr,]=c(i,j,k)
-        amat=matrix(0,m+1,m)
-        amat[1:(m-1),1:m]=slopes
-        amat[(i+1):j,]=-slopes[(i+1):j,]
-        amat[k:(m-1),]=-slopes[k:(m-1),]
-        amat[m,1]=1
-        amat[m+1,m]=1
-        amatl2[[nr]]=amat
-      }
-    }
-  }
-  ## modes at the lower endpoint, i.e. i=1 and mode is at t_1
-  for(j in 3:(m-4)){
-    for(k in (j+2):(m-2)){
-      nr=nr+1
-      trips[nr,]=c(1,j,k)
-      amat=matrix(0,m,m)
-      amat[1:(m-1),1:m]=slopes
-      amat[1:j,]=-slopes[1:j,]
-      amat[(k+1):(m-1),]=-slopes[(k+1):(m-1),]
-      amat[m,m]=1
-      amatl2[[nr]]=amat
-    }
-  }
-  ## modes at upper endpoint, i.e. k=m-2 and mode is at t_{m-1}
-  for(i in 1:(m-6)){
-    for(j in (i+2):(m-4)){
-      nr=nr+1
-      trips[nr,]=c(i,j,m-2)
-      amat=matrix(0,m,m)
-      amat[1:(m-1),1:m]=slopes
-      amat[(i+1):j,]=-slopes[(i+1):j,]
-      amat[m,1]=1
-      amatl2[[nr]]=amat
-    }
-  }
-  ## both modes at the endpoints
-  for(j in 3:(m-4)){
-    nr=nr+1
-    trips[nr,]=c(1,j,m-2)
-    amat=matrix(0,m-1,m)
-    amat[1:(m-1),1:m]=slopes
-    amat[1:j,]=-slopes[1:j,]
-    amatl2[[nr]]=amat
-  }
+bmfit=function(y,kn,amatl2,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam=NULL,cv=cv){
+  n = length(y)
+  m = dim(slopes)[2]
   if(cv | is.null(lam)){
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-0.1*n^(-1/7)*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+0.1*n^(-1/7)*t(D)%*%D)%*%wmat 
-    crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
-    amat2 <- amatl2[[which.min(crit)]]
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-0.1*n^(-1/7)*DtD%*%b0)
+    qmat=t(wmat)%*%(hmat+0.1*n^(-1/7)*DtD)%*%wmat 
+    crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,x$amatw,x$bvec);ans$value})
+    amatw2 <- amatl2[[which.min(crit)]][[1]]
+    bvec <- amatl2[[which.min(crit)]][[2]]
     L = 10
-    lam_set = c(0.0001,0.001,0.01,0.1,1)
-    fold_assignments <- sample(1:L, n, replace = TRUE)
+    lam_set = c(0.00001,0.0001,0.001,0.01,0.1,1,10,100)
+    fold_assignments <- sample(rep(1:L, length.out=n))
     crit_cv = NULL
     for( lamt in lam_set){
       err = rep(0,L)
       for (l in 1:L) {
-        train_data <- y[fold_assignments != l]
-        val_data   <- y[fold_assignments == l]
+        # train_data <- y[fold_assignments != l]
+        # val_data   <- y[fold_assignments == l]
         bspl_train = bspl[fold_assignments != l,]
         bspl_val =  bspl[fold_assignments == l,]
         n_train = nrow(bspl_train)
         n_val   = nrow(bspl_val)
-        cvec_train=cvec_val=1:m
-        for(i in 1:m){
-          cvec_train[i] = sum(bspl_train[,i]) / n_train
-          cvec_val[i]   = sum(bspl_val[,i]) / n_val
-        }
-        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
-        qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
-        ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
+        cvec_train = colMeans(bspl_train)
+        cvec_val = colMeans(bspl_val)
+        zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n_train^(-1/7)*DtD%*%b0)
+        qmat=t(wmat)%*%(hmat+lamt*n_train^(-1/7)*DtD)%*%wmat 
+        ans2=solve.QP(qmat,zvec,amatw2,bvec)
         alphahat2=ans2$solution
         bhat2=wmat%*%alphahat2+b0
         err[l]=t(bhat2)%*%hmat%*%bhat2-2*sum(cvec_val*bhat2)
@@ -327,22 +332,26 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
       crit_cv = c(crit_cv,mean(err))
     }
     lamt=lam_set[which(crit_cv==min(crit_cv))]
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
-    ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*DtD%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*DtD)%*%wmat 
+    crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,x$amatw,x$bvec);ans$value})
+    amatw2 <- amatl2[[which.min(crit)]][[1]]
+    bvec <- amatl2[[which.min(crit)]][[2]]
+    ans2=solve.QP(qmat,zvec,amatw2,bvec)
     alphahat2=ans2$solution
     bhat2=wmat%*%alphahat2+b0
-    cr2=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
+    cr2=t(bhat2)%*%(hmat+lamt*n^(-1/7)*DtD)%*%bhat2-2*sum(cvec*bhat2)
   }else{
     lamt=lam
-    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*t(D)%*%D%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%wmat 
-    crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x%*%wmat),-x%*%b0);ans$value})
-    amat2 <- amatl2[[which.min(crit)]]
-    ans2=solve.QP(qmat,zvec,t(amat2%*%wmat),-amat2%*%b0)
+    zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*DtD%*%b0)
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*DtD)%*%wmat 
+    crit<-lapply(amatl2, function(x){ans <- quadprog::solve.QP(qmat,zvec,x$amatw,x$bvec);ans$value})
+    amatw2 <- amatl2[[which.min(crit)]][[1]]
+    bvec <- amatl2[[which.min(crit)]][[2]]
+    ans2=solve.QP(qmat,zvec,amatw2,bvec)
     alphahat2=ans2$solution
     bhat2=wmat%*%alphahat2+b0
-    cr2=t(bhat2)%*%(hmat+lamt*n^(-1/7)*t(D)%*%D)%*%bhat2-2*sum(cvec*bhat2)
+    cr2=t(bhat2)%*%(hmat+lamt*n^(-1/7)*DtD)%*%bhat2-2*sum(cvec*bhat2)
   }
   
   ans2=new.env()
@@ -352,7 +361,7 @@ bmfit=function(y,kn,hmat,cvec,slopes,b0,wmat,D,bspl,lam=NULL,cv=cv){
   ans2
 }
 ##################################
-modet <- function(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam,eps){
+modet <- function(yb,kn,amatl1,amatl2,hmat,slopes,b0,wmat,DtD,bspl,av1,bp,lam,eps){
   n=length(yb)
   m=dim(slopes)[2]
   capk=length(kn) 
@@ -361,12 +370,9 @@ modet <- function(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam,eps){
   bb=bSpline(yb,degree=2,knots=kn[2:(capk-1)],Boundary.knots=c(s1,s2),intercept=TRUE)
   m=dim(bb)[2]
   for(i in 1:m){bb[,i]=bb[,i]/av1[i]}
-  cb=1:m
-  for(i in 1:m){
-    cb[i]=sum(bb[,i])/n
-  }
-  fit1=umfit(yb,kn,hmat,cb,slopes,b0,wmat,D,bspl,lam,eps=eps, cv=FALSE)
-  fit2=bmfit(yb,kn,hmat,cb,slopes,b0,wmat,D,bspl,lam, cv=FALSE)
+  cb=colMeans(bb)
+  fit1=umfit(yb,kn,amatl1,hmat,cb,slopes,b0,wmat,DtD,bspl,lam,eps=eps, cv=FALSE)
+  fit2=bmfit(yb,kn,amatl2,hmat,cb,slopes,b0,wmat,DtD,bspl,lam, cv=FALSE)
   fhat2=round(bp%*%fit2$bhat,10)
   dfhat2=diff(fhat2)
   if(sum(dfhat2>0)==0 |sum(dfhat2<0)==0){
@@ -381,20 +387,20 @@ modet <- function(yb,kn,hmat,slopes,b0,wmat,D,bspl,av1,bp,lam,eps){
 n = 200
 y = benchden::rberdev(n, dnum=23)
 y = y/sd(y)
-ans=bmodetest(y,B=1)
+ans=bmodetest(y,B=100,parallel = TRUE)
 hist(y,freq=FALSE,breaks=30)
 lines(ans$yp,ans$fhat1,col=2)
 lines(ans$yp,ans$fhat2,col=3)
 ans$lam
-
+ans$pvalue
 
 
 y = abs(rnorm(n,0,1))
 y = y/sd(y)
-ncores = max(1, detectCores() - 1)
-registerDoParallel(ncores)
-ans=bmodetest(y, B=100) 
-stopImplicitCluster()
+#ncores = max(1, detectCores() - 1)
+#registerDoParallel(ncores)
+ans=bmodetest(y, B=100, parallel = TRUE) 
+#stopImplicitCluster()
 hist(y,freq=FALSE,breaks=30)
 lines(ans$yp,ans$fhat1,col=2)
 lines(ans$yp,ans$fhat2,col=3)
