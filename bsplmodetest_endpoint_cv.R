@@ -21,7 +21,8 @@ library("multimode")
 #' @param eps customized penalty parameter for 'flat spot' slope
 #' @param cv default = TRUE, whether use cross validation to find lambda
 ##############################################################
-bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
+#################################################
+bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
   n = length(y)
   y = sort(y)
   if(is.null(lower)){
@@ -198,14 +199,16 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps=0.01,cv=T
     if (!is.unsorted(fhat2[1:(md-1)]) ) {
       pvalue=2
     } else {
-      cdf1=bp%*%ans1$bhat
-      for(i in 2:4001){
-        cdf1[i]=cdf1[i-1]+cdf1[i]
-      }
+      cdf1=cumsum(drop(bp%*%ans1$bhat))
       cdf1=cdf1-min(cdf1)
       cdf1=cdf1/cdf1[4001]
       one_boot <- function(t) {
-        yb=sapply(1:n,function(o){u=runif(1);id=min(which(u<cdf1));alp=(cdf1[id]-u)/(cdf1[id]-cdf1[id-1]);alp*yp[id-1]+(1-alp)*yp[id]})
+        #yb=sapply(1:n,function(o){u=runif(1);id=min(which(u<cdf1));alp=(cdf1[id]-u)/(cdf1[id]-cdf1[id-1]);alp*yp[id-1]+(1-alp)*yp[id]})
+        u = runif(n)
+        id = findInterval(u,cdf1) + 1
+        id = pmax(2, pmin(id, length(cdf1)))
+        alp = (cdf1[id]-u)/(cdf1[id]-cdf1[id-1])
+        yb = alp*yp[id-1]+(1-alp)*yp[id]
         modet(yb,kn,amatl1,amatl2,hmat,slopes,b0,wmat,DtD,bspl,av1,bp,lam=ans2$lam,eps=eps)
       }
       if(parallel){
@@ -384,15 +387,6 @@ modet <- function(yb,kn,amatl1,amatl2,hmat,slopes,b0,wmat,DtD,bspl,av1,bp,lam,ep
   }
 }
 
-n = 200
-y = benchden::rberdev(n, dnum=23)
-y = y/sd(y)
-ans=bmodetest(y,B=100,parallel = TRUE)
-hist(y,freq=FALSE,breaks=30)
-lines(ans$yp,ans$fhat1,col=2)
-lines(ans$yp,ans$fhat2,col=3)
-ans$lam
-ans$pvalue
 
 
 y = abs(rnorm(n,0,1))
@@ -406,3 +400,15 @@ lines(ans$yp,ans$fhat1,col=2)
 lines(ans$yp,ans$fhat2,col=3)
 ans$lam
 ans$pvalue
+
+n = 200
+y = benchden::rberdev(n, dnum=23)
+y = y/sd(y)
+ans=bmodetest(y,B=100,parallel = TRUE)
+hist(y,freq=FALSE,breaks=30)
+lines(ans$yp,ans$fhat1,col=2)
+lines(ans$yp,ans$fhat2,col=3)
+ans$lam
+ans$pvalue
+
+
