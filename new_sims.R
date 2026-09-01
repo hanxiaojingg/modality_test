@@ -2889,3 +2889,159 @@ ans$lam
 ans$pvalue
 
 
+y <- rt(n, df = 3)
+
+rtmix <- function(n, d, df = 3) {
+  z <- rbinom(n, 1, 0.5)
+  
+  y <- rt(n, df = df)
+  y[z == 1] <- y[z == 1] - d/2
+  y[z == 0] <- y[z == 0] + d/2
+  
+  y
+}
+d_set <- seq(0, 5, by = 0.5)
+
+rnormmix_scale <- function(n) {
+  
+  z <- rbinom(n, 1, 0.5)
+  
+  y <- numeric(n)
+  
+  y[z == 1] <- rnorm(sum(z == 1), -1.5, 0.4)
+  y[z == 0] <- rnorm(sum(z == 0),  1.0, 1.2)
+  
+  y
+}
+
+rsmallmode <- function(n) {
+  
+  z <- rbinom(n, 1, 0.25)
+  
+  y <- numeric(n)
+  
+  y[z == 1] <- rnorm(sum(z == 1), -2, 0.5)
+  y[z == 0] <- rnorm(sum(z == 0),  1, 1)
+  
+  y
+}
+
+rbathtub <- function(n) {
+  
+  z <- rbinom(n, 1, 0.5)
+  
+  y <- numeric(n)
+  
+  y[z == 1] <- abs(rnorm(sum(z == 1)))
+  y[z == 0] <- 4 - abs(rnorm(sum(z == 0)))
+  
+  y
+}
+
+rnormgamma <- function(n) {
+  
+  z <- rbinom(n, 1, 0.5)
+  
+  y <- numeric(n)
+  
+  y[z == 1] <- rnorm(sum(z == 1), 0, 0.5)
+  y[z == 0] <- rgamma(sum(z == 0), shape = 3, scale = 0.5) + 3
+  
+  y
+}
+
+library(doParallel)
+library(foreach)
+library(doRNG)
+
+## simulation settings
+n <- 200
+nsim <- 1000
+B <- 500
+alpha <- 0.05
+
+## set up parallel workers
+ncores <- max(1, parallel::detectCores() - 1)
+cl <- parallel::makeCluster(ncores)
+registerDoParallel(cl)
+
+## run simulation
+sim_result <- foreach(
+  r = 1:nsim,
+  .combine = "rbind",
+  .packages = c("splines2", "quadprog", "moments",
+                "multimode", "benchden"),
+  .options.RNG = 123
+) %dorng% {
+  
+  ## generate claw distribution
+  y <- benchden::rberdev(n, dnum = 23)
+  
+  ## same standardization used in your current code
+  y <- y / sd(y)
+  
+  ## run proposed test
+  ans <- bmodetest(
+    y,
+    B = B,
+    cv = TRUE,
+    parallel = FALSE
+  )
+  
+  ## other competing tests can eventually go here too
+  
+  c(
+    pvalue = ans$pvalue,
+    reject = as.numeric(ans$pvalue < alpha),
+    lambda = ans$lam[2]
+  )
+}
+
+parallel::stopCluster(cl)
+
+## estimated power
+power <- mean(sim_result[, "reject"])
+
+power
+
+
+sim_result <- foreach(
+  r = 1:nsim,
+  .combine = "rbind",
+  .packages = c("splines2", "quadprog", "moments",
+                "multimode", "benchden"),
+  .options.RNG = 123
+) %dorng% {
+  
+  y <- benchden::rberdev(n, dnum = 23)
+  y <- y / sd(y)
+  
+  ## proposed method
+  ans <- bmodetest(
+    y,
+    B = B,
+    cv = TRUE,
+    parallel = FALSE
+  )
+  
+  ## dip test
+  dip_p <- diptest::dip.test(y)$p.value
+  
+  ## add the other methods here
+  ## ...
+  
+  c(
+    proposed_p = ans$pvalue,
+    proposed_reject = ans$pvalue < 0.05,
+    
+    dip_p = dip_p,
+    dip_reject = dip_p < 0.05,
+    
+    lambda = ans$lam[2]
+  )
+}
+
+colMeans(
+  sim_result[, c("proposed_reject",
+                 "dip_reject")]
+)
