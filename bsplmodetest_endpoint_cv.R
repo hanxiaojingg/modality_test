@@ -27,7 +27,7 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TR
   y = sort(y)
   if(is.null(lower)){
     if(n > 5){
-      s1 = min(y) - (y[5] - y[1])/4
+      s1 = min(y) - max(diff(y[1:6]))
     } else {
       s1 = min(y)
     }
@@ -37,7 +37,7 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TR
   
   if(is.null(upper)){
     if(n > 5){
-      s2 = y[n] + (y[n] - y[n-4])/4
+      s2 = max(y) + max(diff(y[(n-5):n]))
     } else {
       s2 = max(y)
     }
@@ -71,17 +71,15 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TR
   ####add more knots between the two modes
   d=min(diff(qy))
   dd=floor(diff(qy)/min(diff(qy)))
-  m1=min(which(dd==1))
-  m2=max(which(dd==1))
-  if(sum(dd[m1:m2]>2)>0){ for(i in which(dd[m1:m2]>2)){qy=c(qy,(qy[m1+i-1]+qy[m1+i])/2)}
+  m1=min(which(dd<=2))
+  m2=max(which(dd<=2))
+  if(sum(dd[m1:m2]>10)>0){ for(i in which(dd[m1:m2]>10)){qy=c(qy,(qy[m1+i-1]+qy[m1+i])/2)}
   }
   kn=sort(qy)
   
   m=length(kn)+1
   bspl=bSpline(y,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   yp=0:4000/4000*(s2-s1)+s1
-  s1=min(s1,min(yp))
-  s2=max(s2,max(yp))
   bp=bSpline(yp,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   slopes=bSpline(kn,degree=2,derivs=1,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   D2=bSpline(kn,degree=2,derivs=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
