@@ -2479,7 +2479,7 @@ aggregate(
 ######## use sample range as the support ########
 ############# slightly faster version  ##########
 #################################################
-bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
+bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
   n = length(y)
   y = sort(y)
   if(is.null(lower)){
@@ -2656,14 +2656,16 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=1000,lam=NULL,eps=0.01,cv=T
     if (!is.unsorted(fhat2[1:(md-1)]) ) {
       pvalue=2
     } else {
-      cdf1=bp%*%ans1$bhat
-      for(i in 2:4001){
-        cdf1[i]=cdf1[i-1]+cdf1[i]
-      }
+      cdf1=cumsum(drop(bp%*%ans1$bhat))
       cdf1=cdf1-min(cdf1)
       cdf1=cdf1/cdf1[4001]
       one_boot <- function(t) {
-        yb=sapply(1:n,function(o){u=runif(1);id=min(which(u<cdf1));alp=(cdf1[id]-u)/(cdf1[id]-cdf1[id-1]);alp*yp[id-1]+(1-alp)*yp[id]})
+        #yb=sapply(1:n,function(o){u=runif(1);id=min(which(u<cdf1));alp=(cdf1[id]-u)/(cdf1[id]-cdf1[id-1]);alp*yp[id-1]+(1-alp)*yp[id]})
+        u = runif(n)
+        id = findInterval(u,cdf1) + 1
+        id = pmax(2, pmin(id, length(cdf1)))
+        alp = (cdf1[id]-u)/(cdf1[id]-cdf1[id-1])
+        yb = alp*yp[id-1]+(1-alp)*yp[id]
         modet(yb,kn,amatl1,amatl2,hmat,slopes,b0,wmat,DtD,bspl,av1,bp,lam=ans2$lam,eps=eps)
       }
       if(parallel){
@@ -2842,11 +2844,12 @@ modet <- function(yb,kn,amatl1,amatl2,hmat,slopes,b0,wmat,DtD,bspl,av1,bp,lam,ep
   }
 }
 
-set.seed(1234)
-n = 100
-y = benchden::rberdev(n, dnum=23)/sd(y)
+set.seed(123)
+n = 200
+y = benchden::rberdev(n, dnum=23)
+y = y/sd(y)
 t1=Sys.time()
-ans=bmodetest(y,B=100,parallel = TRUE)
+ans=bmodetest(y,B=5,cv = TRUE, parallel = FALSE)
 t2=Sys.time()
 t2-t1
 
@@ -2880,7 +2883,7 @@ y = abs(rnorm(n,0,1))
 y = y/sd(y)
 #ncores = max(1, detectCores() - 1)
 #registerDoParallel(ncores)
-ans=bmodetest(y, B=200, parallel = TRUE) 
+ans=bmodetest(y, B=200, parallel = FALSE) 
 #stopImplicitCluster()
 hist(y,freq=FALSE,breaks=30)
 lines(ans$yp,ans$fhat1,col=2)
@@ -2956,7 +2959,7 @@ library(doRNG)
 
 ## simulation settings
 n <- 200
-nsim <- 1000
+nsim <- 100
 B <- 500
 alpha <- 0.05
 
@@ -2964,41 +2967,34 @@ alpha <- 0.05
 ncores <- max(1, parallel::detectCores() - 1)
 cl <- parallel::makeCluster(ncores)
 registerDoParallel(cl)
-
+t1=Sys.time()
 ## run simulation
 sim_result <- foreach(
   r = 1:nsim,
   .combine = "rbind",
   .packages = c("splines2", "quadprog", "moments",
-                "multimode", "benchden"),
+               "multimode", "benchden"),
   .options.RNG = 123
 ) %dorng% {
-  
   ## generate claw distribution
-  y <- benchden::rberdev(n, dnum = 23)
-  
-  ## same standardization used in your current code
+  # y <- benchden::rberdev(n, dnum = 23)
+  # z <- rbinom(n, 1, 0.5)
+  # y[z == 1] <- abs(rnorm(sum(z == 1)))
+  # y[z == 0] <- 4 - abs(rnorm(sum(z == 0)))
+  z <- rbinom(n, 1, 0.6)
+  y[z == 1] <- rnorm(sum(z==1),0,1)
+  y[z == 0] <- rnorm(sum(z==0),3,1)
   y <- y / sd(y)
-  
   ## run proposed test
-  ans <- bmodetest(
-    y,
-    B = B,
-    cv = TRUE,
-    parallel = FALSE
-  )
-  
+  ans <- bmodetest(y, B = B, cv = TRUE, parallel = FALSE, eps=10)
   ## other competing tests can eventually go here too
-  
-  c(
-    pvalue = ans$pvalue,
-    reject = as.numeric(ans$pvalue < alpha),
-    lambda = ans$lam[2]
-  )
+  c(pvalue = ans$pvalue, reject = as.numeric(ans$pvalue < alpha))
 }
 
 parallel::stopCluster(cl)
-
+t2=Sys.time()
+t2-t1
+## 
 ## estimated power
 power <- mean(sim_result[, "reject"])
 
@@ -3014,6 +3010,7 @@ sim_result <- foreach(
 ) %dorng% {
   
   y <- benchden::rberdev(n, dnum = 23)
+  
   y <- y / sd(y)
   
   ## proposed method
@@ -3045,3 +3042,61 @@ colMeans(
   sim_result[, c("proposed_reject",
                  "dip_reject")]
 )
+
+
+
+crit <- lapply(seq_along(amatl1), function(k) {
+  x <- amatl1[[k]]
+  res <- tryCatch({
+    ans <- quadprog::solve.QP(qmat, zvec, x$amatw, x$epsbvec)
+    ans$value
+  }, error = function(e) {
+    message(sprintf("Infeasible at k = %d: %s", k, e$message))
+    return(NA) # or Inf, depending on your optimization goal
+  })
+  return(res)
+})
+
+crit <- lapply(seq_along(amatl1), function(k) {
+  x <- amatl1[[k]]
+  
+  # Try solving the quadratic program for candidate k
+  res <- tryCatch({
+    ans <- quadprog::solve.QP(qmat, zvec, x$amatw, x$epsbvec)
+    ans$value # Return objective function value if successful
+  }, error = function(e) {
+    # If constraints are inconsistent or solver fails, catch it here:
+    if (grepl("constraints are inconsistent", e$message)) {
+      # Optional: message(sprintf("Note: k = %d is infeasible (boundary constraint conflict).", k))
+    } else {
+      message(sprintf("Unexpected error at k = %d: %s", k, e$message))
+    }
+    return(NA) # Return NA for infeasible/inconsistent k
+  })
+  
+  return(res)
+})
+
+# Convert list to a vector, ignoring NAs when finding the optimal mode
+crit_vec <- unlist(crit)
+optimal_k <- which.min(crit_vec)
+
+
+ncores = max(1, detectCores() - 1)
+registerDoParallel(ncores)
+B=200
+z <- rbinom(n, 1, 0.6)
+y[z == 1] <- rnorm(sum(z==1),0,1)
+y[z == 0] <- rnorm(sum(z==0),3,1)
+sd = sd(y)
+y <- y / sd
+## run proposed test
+ans <- bmodetest(y, B = B, cv = TRUE, parallel = TRUE, eps=10)
+ans$pvalue
+hist(y,freq=FALSE,breaks=30)
+lines(ans$yp,ans$fhat1,col=2)
+lines(ans$yp,ans$fhat2,col=3)
+lines(ans$yp,sd*dnorm(ans$yp*sd,0,1)*0.6+sd*dnorm(ans$yp*sd,3,1)*0.4,col=4,lty=3)
+ans$lam
+ans$pvalue
+

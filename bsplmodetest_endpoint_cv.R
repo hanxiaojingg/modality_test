@@ -57,6 +57,8 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TR
       qy = c(qy, qy[1] - (qy[2]-qy[1])*q1^(1:(k1)), s1)
     }
   }
+  qy = sort(qy)
+  capk = length(qy)
   if(s2>qy[capk]){
     k2=min(floor(log((s2-qy[capk])/3/(qy[capk]-qy[capk-1])+1, 3/2) - 1), round(capk/8))
     if(k2<2){
@@ -76,10 +78,12 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TR
   if(sum(dd[m1:m2]>10)>0){ for(i in which(dd[m1:m2]>10)){qy=c(qy,(qy[m1+i-1]+qy[m1+i])/2)}
   }
   kn=sort(qy)
-  
+  yp=0:4000/4000*(s2-s1)+s1
+  ## do no delete, might cause rounding issue
+  s1=min(s1,min(yp))
+  s2=max(s2,max(yp))
   m=length(kn)+1
   bspl=bSpline(y,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
-  yp=0:4000/4000*(s2-s1)+s1
   bp=bSpline(yp,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   slopes=bSpline(kn,degree=2,derivs=1,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   D2=bSpline(kn,degree=2,derivs=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
@@ -118,6 +122,7 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TR
     epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
     amatl1[[k]]=list(amatw=t(amat%*%wmat), epsbvec=epsvec-amat%*%b0)
   }
+  ## mode at t_1 and t_{m-1}
   ## for amat_{m-1} and amat_m
   amatmm1 = rbind(-slopes,c(rep(0,m-1),1))
   amatm = rbind(slopes,c(1, rep(0,m-1)))
@@ -282,10 +287,30 @@ umfit=function(y,kn,amatl1,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam=NULL,eps,cv=cv)
   }else{
     lamt=lam
     zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*DtD%*%b0)
-    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*DtD)%*%wmat 
-    crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,x$amatw,x$epsbvec);ans$value})
-    amatw1 <- amatl1[[which.min(crit)]][[1]]
-    epsbvec <- amatl1[[which.min(crit)]][[2]]
+    qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*DtD)%*%wmat
+    crit <- lapply(seq_along(amatl1), function(k) {
+      x <- amatl1[[k]]
+      # Try solving the quadratic program for candidate k
+      res <- tryCatch({
+        ans <- quadprog::solve.QP(qmat, zvec, x$amatw, x$epsbvec)
+        ans$value # Return objective function value if successful
+      }, error = function(e) {
+        # If constraints are inconsistent or solver fails, catch it here:
+        if (grepl("constraints are inconsistent", e$message)) {
+          # Optional: message(sprintf("Note: k = %d is infeasible (boundary constraint conflict).", k))
+        } else {
+          message(sprintf("Unexpected error at k = %d: %s", k, e$message))
+        }
+        return(NA) # Return NA for infeasible/inconsistent k
+      })
+      return(res)
+    })
+    
+    # Convert list to a vector, ignoring NAs when finding the optimal mode
+    crit_vec <- unlist(crit)
+    optimal_ind <- which.min(crit_vec)
+    amatw1 <- amatl1[[optimal_ind]][[1]]
+    epsbvec <- amatl1[[optimal_ind]][[2]]
     ans1=solve.QP(qmat,zvec,amatw1,epsbvec)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
