@@ -11,7 +11,7 @@ library("moments")
 library("multimode")
 
 #############################################################
-#' @param y A vector of observed samples
+#' @param x A vector of observed samples
 #' @param lower lower bound of the support
 #' @param upper upper bound of the support
 #' @param B the number of replicates used in the test
@@ -22,7 +22,9 @@ library("multimode")
 #' @param cv default = TRUE, whether use cross validation to find lambda
 ##############################################################
 #################################################
-bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
+bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
+  sd = sd(x)
+  y = x/sd
   n = length(y)
   y = sort(y)
   if(is.null(lower)){
@@ -48,25 +50,26 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TR
   qy=as.numeric(quantile(y,1:capk/(capk+1)))
   ####add more knots on both sides
   if(s1<qy[1]){
-    k1=min(floor(log((qy[1]-s1)/3/(qy[2]-qy[1])+1, 3/2) -1 ), round(capk/8))
+    k1=min(floor(log((qy[1]-s1)/3/(qy[2]-qy[1])+1, 3/2) ), round(capk/8))
     if(k1<2){
       qy = c(qy,s1)
-      if((qy[1]-s1)/(qy[2]-qy[1])>=2) qy = c(qy,qy[1]-(qy[1]-s1)/2)
+     # if((qy[1]-s1)/(qy[2]-qy[1])>=2) qy = c(qy,qy[1]-(qy[1]-s1)/2)
     }else{
-      q1 = ((qy[1]-s1)/(qy[2]-qy[1]))^(1/(k1+1))
-      qy = c(qy, qy[1] - (qy[2]-qy[1])*q1^(1:(k1)), s1)
+      gaps1 = (qy[2]-qy[1])*1.5^(1:(k1-1))
+      qy = c(qy, qy[1] - cumsum(gaps1), s1)
     }
   }
   qy = sort(qy)
   capk = length(qy)
   if(s2>qy[capk]){
-    k2=min(floor(log((s2-qy[capk])/3/(qy[capk]-qy[capk-1])+1, 3/2) - 1), round(capk/8))
+    k2=min(floor(log((s2-qy[capk])/3/(qy[capk]-qy[capk-1])+1, 3/2) ), round(capk/8))
     if(k2<2){
       qy=c(qy,s2)
-      if((s2-qy[capk])/(qy[capk]-qy[capk-1])>=2) qy = c(qy,(s2-qy[capk])/2+qy[capk])
+      # if((s2-qy[capk])/(qy[capk]-qy[capk-1])>=2) qy = c(qy,(s2-qy[capk])/2+qy[capk])
     }else{
-      q2 = ((s2-qy[capk])/(qy[capk]-qy[capk-1]))^(1/(k2+1))
-      qy = c(qy, (qy[capk]-qy[capk-1])*q2^(1:(k2))+qy[capk], s2)
+     # q2 = ((s2-qy[capk])/(qy[capk]-qy[capk-1]))^(1/(k2+1))
+      gaps2 = (qy[capk]-qy[capk-1])*1.5^(1:(k2-1))
+      qy = c(qy, cumsum(gaps2) + qy[capk], s2)
     }
   }
   qy = sort(qy)
@@ -225,17 +228,16 @@ bmodetest <- function(y,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TR
     }
   }
   ans=new.env()
+  ans$xp=yp*sd
   ans$yp=yp
-  ans$fhat1=bp%*%ans1$bhat
-  ans$fhat2=bp%*%ans2$bhat
+  ans$fhat1=bp%*%ans1$bhat/sd
+  ans$fhat2=bp%*%ans2$bhat/sd
   ans$statistic=t1
   ans$tb=outtb
   ans$pvalue=pvalue
   ans$lam=c(ans1$lam,ans2$lam)
-  ans$kn=kn
+  ans$kn=kn*sd
   ans$crit=c(ans1$crit,ans2$crit)
-  ans$kurtosis=kurtosis(y)
-  ans$skewness=skewness(y)
   ans
 }
 ##############
@@ -412,26 +414,37 @@ modet <- function(yb,kn,amatl1,amatl2,hmat,slopes,b0,wmat,DtD,bspl,av1,bp,lam,ep
 
 
 
-y = abs(rnorm(n,0,1))
-y = y/sd(y)
+x = abs(rnorm(n,0,1))
 #ncores = max(1, detectCores() - 1)
 #registerDoParallel(ncores)
-ans=bmodetest(y, B=100, parallel = TRUE) 
+ans=bmodetest(x, B=10, parallel = TRUE) 
 #stopImplicitCluster()
-hist(y,freq=FALSE,breaks=30)
-lines(ans$yp,ans$fhat1,col=2)
-lines(ans$yp,ans$fhat2,col=3)
+hist(x,xlim = range(ans$xp),freq=FALSE,breaks=30)
+lines(ans$xp,ans$fhat1,col=2)
+lines(ans$xp,ans$fhat2,col=3)
+rug(ans$kn)
 ans$lam
 ans$pvalue
 
 n = 200
-y = benchden::rberdev(n, dnum=23)
-y = y/sd(y)
-ans=bmodetest(y,B=100,parallel = TRUE)
-hist(y,freq=FALSE,breaks=30)
-lines(ans$yp,ans$fhat1,col=2)
-lines(ans$yp,ans$fhat2,col=3)
+x = benchden::rberdev(n, dnum=23)
+ans=bmodetest(x,B=10,parallel = TRUE)
+hist(x,xlim = range(ans$xp),freq=FALSE,breaks=30)
+lines(ans$xp,ans$fhat1,col=2)
+lines(ans$xp,ans$fhat2,col=3)
+rug(ans$kn)
 ans$lam
 ans$pvalue
 
 
+z <- rbinom(n, 1, 0.6)
+x = rep(0,n)
+x[z == 1] <- rnorm(sum(z==1),0,1)
+x[z == 0] <- rnorm(sum(z==0),3,1)
+ans=bmodetest(x,B=10,parallel = TRUE)
+hist(x,xlim = range(ans$xp),freq=FALSE,breaks=30)
+lines(ans$xp,ans$fhat1,col=2)
+lines(ans$xp,ans$fhat2,col=3)
+rug(ans$kn)
+ans$lam
+ans$pvalue
