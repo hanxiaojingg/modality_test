@@ -25,6 +25,8 @@ library("multimode")
 bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
   sd = sd(x)
   y = x/sd
+  #sd=1
+  #y=x
   n = length(y)
   y = sort(y)
   if(is.null(lower)){
@@ -88,9 +90,9 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   m=length(kn)+1
   bspl=bSpline(y,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   bp=bSpline(yp,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
+  bk=bSpline(kn,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   slopes=bSpline(kn,degree=2,derivs=1,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   D2=bSpline(kn,degree=2,derivs=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
-  d=(s2-s1)/m
   ###  make all basis functions integrate to one
   dp=yp[2]-yp[1]
   avec=1:m
@@ -98,6 +100,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   for(i in 1:m){
     bspl[,i]=bspl[,i]/avec[i]
     bp[,i]=bp[,i]/avec[i]
+    bk[,i]=bk[,i]/avec[i]
     slopes[,i]=slopes[,i]/avec[i]
     D2[,i]=D2[,i]/avec[i]
   }
@@ -111,26 +114,53 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   
   D1=matrix(0,m-2,m-1)
   for(i in 1:(m-2)){D1[i,i]=-1;D1[i,i+1]=1}
-  D=D1%*%D2*d^(5/2)
+  D=D1%*%D2
   
   ## unimadal amat list
   amatl1=list()
   ## mode between t_k and t_{k+1} where k=1,...,m-2
-  for(k in 1:(m-2)){
+  for(k in 1:2){
     amat=matrix(0,nrow=m+1,ncol=m)
     amat[1:k,]=slopes[1:k,]
-    amat[(k+1):(m-1),]=-slopes[(k+1):(m-1),]
+    amat[(k+1):(k+2),]=-slopes[(k+1):(k+2),]
+    amat[(k+3):(m-1),]=-slopes[(k+3):(m-1),]-eps/n^(2/7)*bk[(k+3):(m-1),]
     amat[m,1]=1
     amat[m+1,m]=1
-    epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
-    amatl1[[k]]=list(amatw=t(amat%*%wmat), epsbvec=epsvec-amat%*%b0)
+    #epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
+    #amatl1[[k]]=list(amatw=t(amat%*%wmat), epsbvec=epsvec-amat%*%b0)
+    amatl1[[k]]=list(amatw=t(amat%*%wmat), bvec= -amat %*% b0)
+  }
+  for(k in 3:(m-4)){
+    amat=matrix(0,nrow=m+1,ncol=m)
+    amat[1:(k-2),]=slopes[1:(k-2),]-eps/n^(2/7)*bk[1:(k-2),]
+    amat[c(k-1,k),]=slopes[c(k-1,k),]
+    amat[c(k+1,k+2),]=-slopes[c(k+1,k+2),]
+    amat[(k+3):(m-1),]=-slopes[(k+3):(m-1),]-eps/n^(2/7)*bk[(k+3):(m-1),]
+    amat[m,1]=1
+    amat[m+1,m]=1
+    #epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
+    #amatl1[[k]]=list(amatw=t(amat%*%wmat), epsbvec=epsvec-amat%*%b0)
+    amatl1[[k]]=list(amatw=t(amat%*%wmat), bvec= -amat %*% b0)
+  }
+  for(k in (m-3):(m-2)){
+    amat=matrix(0,nrow=m+1,ncol=m)
+    amat[1:(k-2),]=slopes[1:(k-2),]-eps/n^(2/7)*bk[1:(k-2),]
+    amat[c(k-1,k),]=slopes[c(k-1,k),]
+    amat[c(k+1,m-1),]=-slopes[c(k+1,m-1),]
+    amat[m,1]=1
+    amat[m+1,m]=1
+    #epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
+    #amatl1[[k]]=list(amatw=t(amat%*%wmat), epsbvec=epsvec-amat%*%b0)
+    amatl1[[k]]=list(amatw=t(amat%*%wmat), bvec= -amat %*% b0)
   }
   ## mode at t_1 and t_{m-1}
   ## for amat_{m-1} and amat_m
-  amatmm1 = rbind(-slopes,c(rep(0,m-1),1))
-  amatm = rbind(slopes,c(1, rep(0,m-1)))
-  amatl1[[m-1]]=list(amatw = t(amatmm1%*%wmat), epsbvec = rep(0,m)-amatmm1%*%b0 )
-  amatl1[[m]]=list(amatw = t(amatm%*%wmat), epsbvec = rep(0,m)-amatm%*%b0)
+  amatt1 = rbind(-slopes,c(rep(0,m-1),1))
+  amatt1[3:(m-1),] = -slopes[3:(m-1),]-eps/n^(2/7)*bk[3:(m-1),]
+  amattm1 = rbind(slopes,c(1, rep(0,m-1)))
+  amattm1[1:(m-3),]=slopes[1:(m-3),]-eps/n^(2/7)*bk[1:(m-3),]
+  amatl1[[m-1]]=list(amatw = t(amatt1%*%wmat), bvec = -amatt1 %*% b0 )
+  amatl1[[m]]=list(amatw = t(amattm1%*%wmat), bvec = -amattm1 %*% b0)
   ## bimodal amat list
   ## triplets (i,j,k) where i<j<k 
   trips=matrix(0,nrow=choose(m,3),ncol=3)
@@ -142,12 +172,14 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
       for(k in (j+2):(m-2)){
         nr=nr+1
         trips[nr,]=c(i,j,k)
-        amat=matrix(0,m+1,m)
+        amat=matrix(0,m+3,m)
         amat[1:(m-1),1:m]=slopes
         amat[(i+1):j,]=-slopes[(i+1):j,]
         amat[k:(m-1),]=-slopes[k:(m-1),]
         amat[m,1]=1
         amat[m+1,m]=1
+        amat[m+2,]=bk[j,]
+        amat[m+3,]=bk[j+1,]
         amatl2[[nr]]=list(amatw = t(amat %*% wmat), bvec = -amat %*% b0)
       }
     }
@@ -248,9 +280,10 @@ umfit=function(y,kn,amatl1,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam=NULL,eps,cv=cv)
   if(cv | is.null(lam)){
     zvec=t(wmat)%*%(cvec-hmat%*%b0-0.1*n^(-1/7)*DtD%*%b0)
     qmat=t(wmat)%*%(hmat+0.1*n^(-1/7)*DtD)%*%wmat 
-    crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,x[[1]],x[[2]]);ans$value})
+    #crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,x[[1]],x[[2]]);ans$value})
+    crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,x$amatw,x$bvec);ans$value})
     amatw1 <- amatl1[[which.min(crit)]][[1]]
-    epsbvec <- amatl1[[which.min(crit)]][[2]]
+    bvec <- amatl1[[which.min(crit)]][[2]]
     ## number of folds
     L = 10
     lam_set = c(0.0001,0.001,0.01,0.1,1,10)
@@ -269,7 +302,7 @@ umfit=function(y,kn,amatl1,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam=NULL,eps,cv=cv)
         cvec_val = colMeans(bspl_val)
         zvec=t(wmat)%*%(cvec_train-hmat%*%b0-lamt*n_train^(-1/7)*DtD%*%b0)
         qmat=t(wmat)%*%(hmat+lamt*n_train^(-1/7)*DtD)%*%wmat 
-        ans1=solve.QP(qmat,zvec,amatw1,epsbvec)
+        ans1=solve.QP(qmat,zvec,amatw1,bvec)
         alphahat1=ans1$solution
         bhat1=wmat%*%alphahat1+b0
         err[l]=t(bhat1)%*%hmat%*%bhat1-2*sum(cvec_val*bhat1)
@@ -282,7 +315,7 @@ umfit=function(y,kn,amatl1,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam=NULL,eps,cv=cv)
     # crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,t(x[[1]]%*%wmat),x[[2]]-x[[1]]%*%b0);ans$value})
     # amat1 <- amatl1[[which.min(crit)]][[1]]
     # epsvec <- amatl1[[which.min(crit)]][[2]]
-    ans1=solve.QP(qmat,zvec,amatw1,epsbvec)
+    ans1=solve.QP(qmat,zvec,amatw1,bvec)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
     cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*DtD)%*%bhat1-2*sum(cvec*bhat1)
@@ -290,33 +323,31 @@ umfit=function(y,kn,amatl1,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam=NULL,eps,cv=cv)
     lamt=lam
     zvec=t(wmat)%*%(cvec-hmat%*%b0-lamt*n^(-1/7)*DtD%*%b0)
     qmat=t(wmat)%*%(hmat+lamt*n^(-1/7)*DtD)%*%wmat
-    crit <- lapply(seq_along(amatl1), function(k) {
-      x <- amatl1[[k]]
-      # Try solving the quadratic program for candidate k
-      res <- tryCatch({
-        ans <- quadprog::solve.QP(qmat, zvec, x$amatw, x$epsbvec)
-        ans$value # Return objective function value if successful
-      }, error = function(e) {
-        # If constraints are inconsistent or solver fails, catch it here:
-        if (grepl("constraints are inconsistent", e$message)) {
-          # Optional: message(sprintf("Note: k = %d is infeasible (boundary constraint conflict).", k))
-        } else {
-          message(sprintf("Unexpected error at k = %d: %s", k, e$message))
-        }
-        return(NA) # Return NA for infeasible/inconsistent k
-      })
-      return(res)
-    })
+    # crit <- lapply(seq_along(amatl1), function(k) {
+    #   x <- amatl1[[k]]
+    #   # Try solving the quadratic program for candidate k
+    #   res <- tryCatch({
+    #     ans <- quadprog::solve.QP(qmat, zvec, x$amatw, x$epsbvec)
+    #     ans$value # Return objective function value if successful
+    #   }, error = function(e) {
+    #     # If constraints are inconsistent or solver fails, catch it here:
+    #     if (grepl("constraints are inconsistent", e$message)) {
+    #       # Optional: message(sprintf("Note: k = %d is infeasible (boundary constraint conflict).", k))
+    #     } else {
+    #       message(sprintf("Unexpected error at k = %d: %s", k, e$message))
+    #     }
+    #     return(NA) # Return NA for infeasible/inconsistent k
+    #   })
+    #   return(res)
+    # })
     
-    # Convert list to a vector, ignoring NAs when finding the optimal mode
-    crit_vec <- unlist(crit)
-    optimal_ind <- which.min(crit_vec)
-    amatw1 <- amatl1[[optimal_ind]][[1]]
-    epsbvec <- amatl1[[optimal_ind]][[2]]
-    ans1=solve.QP(qmat,zvec,amatw1,epsbvec)
+    crit<-lapply(amatl1, function(x){ans <- quadprog::solve.QP(qmat,zvec,x$amatw,x$bvec);ans$value})
+    amatw1 <- amatl1[[which.min(crit)]][[1]]
+    bvec <- amatl1[[which.min(crit)]][[2]]
+    ans1=solve.QP(qmat,zvec,amatw1,bvec)
     alphahat1=ans1$solution
     bhat1=wmat%*%alphahat1+b0
-    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*DtD)%*%bhat1-2*sum(cvec*bhat1) 
+    cr1=t(bhat1)%*%(hmat+lamt*n^(-1/7)*DtD)%*%bhat1-2*sum(cvec*bhat1)
   }
   
   ans1=new.env()
@@ -426,22 +457,23 @@ rug(ans$kn)
 ans$lam
 ans$pvalue
 
-n = 200
+n = 100
 x = benchden::rberdev(n, dnum=23)
-ans=bmodetest(x,B=10,parallel = TRUE)
-hist(x,xlim = range(ans$xp),freq=FALSE,breaks=30)
+ans=bmodetest(x,B=1,parallel = TRUE)
+hist(x,xlim = range(ans$xp),ylim=c(0,max(ans$fhat1,ans$fhat2,dberdev(ans$xp,dnum=23))),freq=FALSE,breaks=30)
 lines(ans$xp,ans$fhat1,col=2)
 lines(ans$xp,ans$fhat2,col=3)
+lines(ans$xp,dberdev(ans$xp,dnum=23),lty=2)
 rug(ans$kn)
 ans$lam
 ans$pvalue
 
-
+n=100
 z <- rbinom(n, 1, 0.6)
 x = rep(0,n)
 x[z == 1] <- rnorm(sum(z==1),0,1)
-x[z == 0] <- rnorm(sum(z==0),3,1)
-ans=bmodetest(x,B=10,parallel = TRUE)
+x[z == 0] <- rnorm(sum(z==0),5,1)
+ans=bmodetest(x,B=1,parallel = TRUE)
 hist(x,xlim = range(ans$xp),freq=FALSE,breaks=30)
 lines(ans$xp,ans$fhat1,col=2)
 lines(ans$xp,ans$fhat2,col=3)
