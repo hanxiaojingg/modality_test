@@ -6,6 +6,7 @@ library("moments")
 library("multimode")
 library(doSNOW)
 library("benchden")
+library(doRNG)
 
 set.seed(1234)
 n=200
@@ -2960,7 +2961,7 @@ library(doRNG)
 ## simulation settings
 n <- 200
 nsim <- 100
-B <- 500
+B <- 400
 alpha <- 0.05
 
 ## set up parallel workers
@@ -2977,16 +2978,16 @@ sim_result <- foreach(
   .options.RNG = 123
 ) %dorng% {
   ## generate claw distribution
-  # y <- benchden::rberdev(n, dnum = 23)
+   x <- benchden::rberdev(n, dnum = 23)
   # z <- rbinom(n, 1, 0.5)
   # y[z == 1] <- abs(rnorm(sum(z == 1)))
   # y[z == 0] <- 4 - abs(rnorm(sum(z == 0)))
-  z <- rbinom(n, 1, 0.6)
-  y[z == 1] <- rnorm(sum(z==1),0,1)
-  y[z == 0] <- rnorm(sum(z==0),3,1)
-  y <- y / sd(y)
+  # z <- rbinom(n, 1, 0.6)
+  # x = rep(0,n)
+  # x[z == 1] <- rnorm(sum(z==1),0,1)
+  # x[z == 0] <- rnorm(sum(z==0),3,1)
   ## run proposed test
-  ans <- bmodetest(y, B = B, cv = TRUE, parallel = FALSE, eps=10)
+  ans <- bmodetest(x, B = B, cv = TRUE, parallel = FALSE, eps=1)
   ## other competing tests can eventually go here too
   c(pvalue = ans$pvalue, reject = as.numeric(ans$pvalue < alpha))
 }
@@ -3045,38 +3046,6 @@ colMeans(
 
 
 
-crit <- lapply(seq_along(amatl1), function(k) {
-  x <- amatl1[[k]]
-  res <- tryCatch({
-    ans <- quadprog::solve.QP(qmat, zvec, x$amatw, x$epsbvec)
-    ans$value
-  }, error = function(e) {
-    message(sprintf("Infeasible at k = %d: %s", k, e$message))
-    return(NA) # or Inf, depending on your optimization goal
-  })
-  return(res)
-})
-
-crit <- lapply(seq_along(amatl1), function(k) {
-  x <- amatl1[[k]]
-  
-  # Try solving the quadratic program for candidate k
-  res <- tryCatch({
-    ans <- quadprog::solve.QP(qmat, zvec, x$amatw, x$epsbvec)
-    ans$value # Return objective function value if successful
-  }, error = function(e) {
-    # If constraints are inconsistent or solver fails, catch it here:
-    if (grepl("constraints are inconsistent", e$message)) {
-      # Optional: message(sprintf("Note: k = %d is infeasible (boundary constraint conflict).", k))
-    } else {
-      message(sprintf("Unexpected error at k = %d: %s", k, e$message))
-    }
-    return(NA) # Return NA for infeasible/inconsistent k
-  })
-  
-  return(res)
-})
-
 # Convert list to a vector, ignoring NAs when finding the optimal mode
 crit_vec <- unlist(crit)
 optimal_k <- which.min(crit_vec)
@@ -3084,19 +3053,70 @@ optimal_k <- which.min(crit_vec)
 
 ncores = max(1, detectCores() - 1)
 registerDoParallel(ncores)
-B=200
+B=1
 z <- rbinom(n, 1, 0.6)
-y[z == 1] <- rnorm(sum(z==1),0,1)
-y[z == 0] <- rnorm(sum(z==0),3,1)
-sd = sd(y)
-y <- y / sd
+x = numeric(n)
+x[z == 1] <- rnorm(sum(z==1),0,1)
+x[z == 0] <- rnorm(sum(z==0),4,1)
 ## run proposed test
-ans <- bmodetest(y, B = B, cv = TRUE, parallel = TRUE, eps=10)
+ans <- bmodetest(x, B = B, cv = TRUE, parallel = FALSE, eps=10)
 ans$pvalue
-hist(y,freq=FALSE,breaks=30)
-lines(ans$yp,ans$fhat1,col=2)
-lines(ans$yp,ans$fhat2,col=3)
-lines(ans$yp,sd*dnorm(ans$yp*sd,0,1)*0.6+sd*dnorm(ans$yp*sd,3,1)*0.4,col=4,lty=3)
+hist(x,freq=FALSE,breaks=30,xlim=range(ans$xp))
+lines(ans$xp,ans$fhat1,col=2)
+lines(ans$xp,ans$fhat2,col=3)
+lines(ans$xp,dnorm(ans$xp,0,1)*0.6+dnorm(ans$xp,3,1)*0.4,col=4,lty=3)
+rug(ans$kn)
 ans$lam
 ans$pvalue
+
+n=200
+x=rt(n,df=2)
+ans=bmodetest(x,B=2,parallel = TRUE)
+hist(x,xlim = range(ans$xp),freq=FALSE,breaks=30)
+lines(ans$xp,ans$fhat1,col=2)
+lines(ans$xp,ans$fhat2,col=3)
+rug(ans$kn)
+ans$lam
+ans$pvalue
+
+n <- 200 #sample size
+nsim <- 2 #simulation size
+B <- 4 #bootstrap sample size for each sample
+alpha <- 0.05 
+eps_values <- c(0.001, 0.01, 0.1, 1) #candidate epsilon
+
+ncores <- max(1, parallel::detectCores() - 2) #number of cores registered for parallel
+cl <- parallel::makeCluster(ncores)
+doParallel::registerDoParallel(cl)
+
+results <- vector("list", length(eps_values))
+
+for (i in seq_along(eps_values)) {
+  eps <- eps_values[i]
+  t1 <- Sys.time()
+  sim_result <- foreach(
+    r = 1:nsim,
+    .combine = "rbind",
+    .packages = c("splines2", "quadprog", "moments",
+                  "multimode", "benchden"),
+    .options.RNG = 123
+  ) %dorng% {
+    z <- rbinom(n, 1, 0.6)
+    x <- rep(0, n)
+    x[z == 1] <- rnorm(sum(z == 1), 0, 1)
+    x[z == 0] <- rnorm(sum(z == 0), 3.5, 1)
+    ans <- bmodetest(x,B = B,cv = TRUE,parallel = FALSE,eps = eps)
+    c(pvalue = ans$pvalue, reject = as.numeric(ans$pvalue < alpha))
+  }
+  elapsed <- difftime(Sys.time(), t1, units = "secs")
+  results[[i]] <- data.frame(
+    eps = eps,
+    power = mean(sim_result[, "reject"]),
+    elapsed_seconds = as.numeric(elapsed)
+  )
+  cat(paste("eps =", eps,"completed\n"))
+}
+parallel::stopCluster(cl)
+power_results <- do.call(rbind, results)
+power_results
 

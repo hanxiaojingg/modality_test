@@ -27,15 +27,30 @@ makec=function(y,tk,d,h){
 }
 
 ##slope<=eps/n^od/range^2
-deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,v=0.1, eps1=2,eps2=1,eps=NULL){
+deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=500,lam=NULL,v=0.1, eps1=2,eps2=1,eps=NULL){
   nraw=length(y)
-  s1=lower
-  s2=upper
-  q1=quantile(y,.01)
-  q2=quantile(y,.99)
-  rng=q2-q1
-  if(is.null(lower)){s1=as.numeric(q1-.4*rng)}
-  if(is.null(upper)){s2=as.numeric(q2+.4*rng)}
+  n = length(y)
+  y = sort(y)
+  if(is.null(lower)){
+    if(n > 5){
+      s1 = min(y) - max(diff(y[1:6]))
+    } else {
+      s1 = min(y)
+    }
+  } else {
+    s1 = lower
+  }
+  
+  if(is.null(upper)){
+    if(n > 5){
+      s2 = max(y) + max(diff(y[(n-5):n]))
+    } else {
+      s2 = max(y)
+    }
+  } else {
+    s2 = upper
+  }
+  
   if(!is.null(d)) {
     l = h/d
   }
@@ -56,22 +71,21 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,d=NULL,B=1000,lam=NULL,
   yraw = y
   y = y[y>=s1 & y<=s2]
   n = length(y)
-  if(is.null(lam)){
-    K = kurtosis(y)
-    if(K<2){
-      lam = 10^2*n^(-1/7)
-    } else if(K>2 & K<5){
-      lam = 10^(4-K)*n^(-1/7)
-    } else if(K>5 & K<9){
-      lam = 10^(3/2-K/2)*n^(-1/7)
-    } else{
-      lam = 10^(-3)*n^(-1/7)
-    }
-    lam = v*lam
-  }
+  # if(is.null(lam)){
+  #   K = kurtosis(y)
+  #   if(K<2){
+  #     lam = 10^2*n^(-1/7)
+  #   } else if(K>2 & K<5){
+  #     lam = 10^(4-K)*n^(-1/7)
+  #   } else if(K>5 & K<9){
+  #     lam = 10^(3/2-K/2)*n^(-1/7)
+  #   } else{
+  #     lam = 10^(-3)*n^(-1/7)
+  #   }
+  #   lam = v*lam
+  # }
   if(is.null(eps)){
-    eps=ifelse(abs(skewness(y))>0.7,eps2,eps1)
-  }else{eps1=eps2=eps}
+    eps=eps}
   delta  = matrix(0,nrow=np,ncol=m)
   for(i in 1:m){
     delta[yp>tk[i]&yp<=tk[i+1],i] = 2*(yp[yp>tk[i]&yp<=tk[i+1]]-tk[i])^2/d^2/3

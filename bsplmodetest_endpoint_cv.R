@@ -228,6 +228,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   t1=as.numeric((ans1$crit-ans2$crit))
   #t2=as.numeric((ans1$crit-ans2$crit)/abs(ans1$crit))
   fhat2=round(bp%*%ans2$bhat,10)
+  fhat1=round(bp%*%ans1$bhat,10)
   dfhat2=diff(fhat2)
   outtb=NULL
   if(sum(dfhat2>0)==0 |sum(dfhat2<0)==0){
@@ -237,7 +238,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
     if (!is.unsorted(fhat2[1:(md-1)]) ) {
       pvalue=2
     } else {
-      cdf1=cumsum(drop(bp%*%ans1$bhat))
+      cdf1=cumsum(fhat1)
       cdf1=cdf1-min(cdf1)
       cdf1=cdf1/cdf1[4001]
       one_boot <- function(t) {
@@ -270,7 +271,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   ans=new.env()
   ans$xp=yp*sd
   ans$yp=yp
-  ans$fhat1=bp%*%ans1$bhat/sd
+  ans$fhat1=fhat1/sd
   ans$fhat2=fhat2_corrected/sd
   ans$statistic=t1
   ans$tb=outtb
