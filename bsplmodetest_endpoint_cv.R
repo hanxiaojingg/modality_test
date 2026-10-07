@@ -1,7 +1,9 @@
 #################################################
-############ mode on the endpoint ###############
-######## use sample range as the support#########
-############# cross validation ##################
+######### allow mode on the endpoint ############
+#### use adjusted sample range as the support####
+###### no flat constraint: |f'/f| > epsilon #####
+#### cross validation for smooth parameter ######
+############# corrected bimodal fit #############
 #################################################
 library("splines2")
 library("quadprog")
@@ -9,19 +11,16 @@ library("doParallel")
 library("diptest")
 library("moments")
 library("multimode")
-
 #############################################################
 #' @param x A vector of observed samples
 #' @param lower lower bound of the support
 #' @param upper upper bound of the support
 #' @param B the number of replicates used in the test
 #' @param lam the smoothing penalty parameter
-#' @param eps1 the penalty parameter that bound the slope to get rid of the 'flat spot' (for more skewed sample) 
-#' @param eps2 the penalty parameter that bound the slope to get rid of the 'flat spot' (for less skewed sample)
-#' @param eps customized penalty parameter for 'flat spot' slope
+#' @param eps customized penalty parameter for 'flat spot' slope, the actual value used is eps*n^{-2/7}
 #' @param cv default = TRUE, whether use cross validation to find lambda
+#' @param parallel default = TRUE, whether use parallel for sampling
 ##############################################################
-#################################################
 bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
   sd = sd(x)
   y = x/sd
@@ -276,7 +275,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   ans$statistic=t1
   ans$tb=outtb
   ans$pvalue=pvalue
-  ans$lam=c(ans1$lam,ans2$lam)
+  ans$lam=ans2$lam
   ans$kn=kn*sd
   ans$crit=c(ans1$crit,ans2$crit)
   ans

@@ -44,10 +44,13 @@ for (i in seq_along(eps_values)) {
   results[[i]] <- data.frame(
     eps = eps,
     power = mean(sim_result[, "reject"]),
-    elapsed_seconds = as.numeric(elapsed)
+   # elapsed_seconds = as.numeric(elapsed)
   )
   cat(paste("eps =", eps,"completed\n"))
 }
 parallel::stopCluster(cl)
 power_results <- do.call(rbind, results)
 power_results
+
+
+
