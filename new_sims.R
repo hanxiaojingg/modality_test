@@ -3079,12 +3079,13 @@ rug(ans$kn)
 ans$lam
 ans$pvalue
 
+
 n <- 200 #sample size
 nsim <- 2 #simulation size
 B <- 4 #bootstrap sample size for each sample
 alpha <- 0.05 
 eps_values <- c(0.001, 0.01, 0.1, 1) #candidate epsilon
-
+d=1
 ncores <- max(1, parallel::detectCores() - 2) #number of cores registered for parallel
 cl <- parallel::makeCluster(ncores)
 doParallel::registerDoParallel(cl)
@@ -3104,7 +3105,7 @@ for (i in seq_along(eps_values)) {
     z <- rbinom(n, 1, 0.6)
     x <- rep(0, n)
     x[z == 1] <- rnorm(sum(z == 1), 0, 1)
-    x[z == 0] <- rnorm(sum(z == 0), 3.5, 1)
+    x[z == 0] <- rnorm(sum(z == 0), d, 1)
     ans <- bmodetest(x,B = B,cv = TRUE,parallel = FALSE,eps = eps)
     c(pvalue = ans$pvalue, reject = as.numeric(ans$pvalue < alpha))
   }
@@ -3119,4 +3120,260 @@ for (i in seq_along(eps_values)) {
 parallel::stopCluster(cl)
 power_results <- do.call(rbind, results)
 power_results
+
+
+
+n <- 200
+nsim <- 200
+B <- 400
+alpha <- 0.05
+
+eps_values <- c(0.01, 0.1, 1)
+#d_values <- c(0, 1, 2, seq(2.2, 2.8, by = 0.2), 3, 3.5, 4)
+d_values <- c(11,13,14,15,16,17,20,25)
+ncores <- max(1, parallel::detectCores() - 1)
+cl <- parallel::makeCluster(ncores)
+doParallel::registerDoParallel(cl)
+
+results <- vector("list", length(d_values) * length(eps_values))
+result_index <- 1
+
+for (d in d_values) {
+  for (eps in eps_values) {
+    t1 <- Sys.time()
+    
+    sim_result <- foreach(
+      r = 1:nsim,
+      .combine = "rbind",
+      .packages = c(
+        "splines2", "quadprog", "moments",
+        "multimode", "benchden"
+      ),
+      .options.RNG = 123
+    ) %dorng% {
+      z <- rbinom(n, 1, 0.5)
+      
+      x <- rep(0, n)
+      #x[z == 1] <- rnorm(sum(z == 1), 0, 1)
+      #x[z == 0] <- rnorm(sum(z == 0), d, 1)
+      x[z == 1] <- rchisq(sum(z == 1), 5)
+      x[z == 0] <- rchisq(sum(z == 0), d)      
+      ans <- bmodetest(
+        x,
+        B = B,
+        cv = TRUE,
+        parallel = FALSE,
+        eps = eps
+      )
+      
+      c(
+        pvalue = ans$pvalue,
+        reject = as.numeric(ans$pvalue < alpha)
+      )
+    }
+    
+    elapsed <- difftime(Sys.time(), t1, units = "secs")
+    
+    results[[result_index]] <- data.frame(
+      d = d,
+      eps = eps,
+      power = mean(sim_result[, "reject"]),
+      elapsed_seconds = as.numeric(elapsed)
+    )
+    
+    cat("d =", d, "| eps =", eps, "completed\n")
+    result_index <- result_index + 1
+  }
+}
+
+parallel::stopCluster(cl)
+foreach::registerDoSEQ()
+
+results1 <- do.call(rbind, results)
+
+save(rrr, file = "eps_0.4N(d,1).RData")
+save(rrr2, file = "eps_0.4N(d,1)_n800.RData")
+
+n <- 800
+nsim <- 200
+B <- 200
+alpha <- 0.05
+
+eps_values <- c(0.1, 1)
+#d_values <- c(0, 1, 2, seq(2.2, 2.8, by = 0.2), 3, 3.5, 4)
+d_values <- c(14,15,16,17,19)
+ncores <- max(1, parallel::detectCores() - 1)
+cl <- parallel::makeCluster(ncores)
+doParallel::registerDoParallel(cl)
+
+results <- vector("list", length(d_values) * length(eps_values))
+result_index <- 1
+
+for (d in d_values) {
+  for (eps in eps_values) {
+    t1 <- Sys.time()
+    
+    sim_result <- foreach(
+      r = 1:nsim,
+      .combine = "rbind",
+      .packages = c(
+        "splines2", "quadprog", "moments",
+        "multimode", "benchden"
+      ),
+      .options.RNG = 123
+    ) %dorng% {
+      z <- rbinom(n, 1, 0.5)
+      
+      x <- rep(0, n)
+      #x[z == 1] <- rnorm(sum(z == 1), 0, 1)
+      #x[z == 0] <- rnorm(sum(z == 0), d, 1)
+      x[z == 1] <- rchisq(sum(z == 1), 5)
+      x[z == 0] <- rchisq(sum(z == 0), d)      
+      ans <- bmodetest(
+        x,
+        B = B,
+        cv = TRUE,
+        parallel = FALSE,
+        eps = eps
+      )
+      
+      c(
+        pvalue = ans$pvalue,
+        reject = as.numeric(ans$pvalue < alpha)
+      )
+    }
+    
+    elapsed <- difftime(Sys.time(), t1, units = "secs")
+    
+    results[[result_index]] <- data.frame(
+      d = d,
+      eps = eps,
+      power = mean(sim_result[, "reject"]),
+      elapsed_seconds = as.numeric(elapsed)
+    )
+    
+    cat("d =", d, "| eps =", eps, "completed\n")
+    result_index <- result_index + 1
+  }
+}
+
+parallel::stopCluster(cl)
+foreach::registerDoSEQ()
+
+results2 <- do.call(rbind, results)
+
+
+
+
+nsim <- 200
+B <- 200
+alpha <- 0.05
+eps_values <- c(0.1, 1)
+n_values <- c(100,200,400,600)
+ncores <- max(1, parallel::detectCores() - 1)
+cl <- parallel::makeCluster(ncores)
+doParallel::registerDoParallel(cl)
+
+results <- vector("list", length(d_values) * length(eps_values))
+result_index <- 1
+
+for (n in n_values) {
+  for (eps in eps_values) {
+    t1 <- Sys.time()
+    
+    sim_result <- foreach(
+      r = 1:nsim,
+      .combine = "rbind",
+      .packages = c(
+        "splines2", "quadprog", "moments",
+        "multimode", "benchden"
+      ),
+      .options.RNG = 123
+    ) %dorng% {
+      z <- rbinom(n, 1, 0.5)
+      
+      x <- rep(0, n)
+      x[z == 1] <- rnorm(sum(z == 1), 0, 1)
+      x[z == 0] <- rnorm(sum(z == 0), 2.44, 1)
+      # x[z == 1] <- rchisq(sum(z == 1), 5)
+      # x[z == 0] <- rchisq(sum(z == 0), d)      
+      ans <- bmodetest(
+        x,
+        B = B,
+        cv = TRUE,
+        parallel = FALSE,
+        eps = eps
+      )
+      
+      c(
+        pvalue = ans$pvalue,
+        reject = as.numeric(ans$pvalue < alpha)
+      )
+    }
+    
+    elapsed <- difftime(Sys.time(), t1, units = "secs")
+    
+    results[[result_index]] <- data.frame(
+      n = n,
+      eps = eps,
+      power = mean(sim_result[, "reject"]),
+      elapsed_seconds = as.numeric(elapsed)
+    )
+    
+    cat("n =", n, "| eps =", eps, "completed\n")
+    result_index <- result_index + 1
+  }
+}
+parallel::stopCluster(cl)
+foreach::registerDoSEQ()
+
+
+# library(ggplot2)
+# library(dplyr)
+# library(tidyr)
+
+rrr3 <- rrr3 %>%
+  mutate(eps = factor(eps))
+
+# Plot
+ggplot(rrr3, aes(
+  x = d,
+  y = power,
+  group = eps,
+  color = eps,
+  linetype = eps,
+  shape = eps
+)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.5) +
+  geom_hline(
+    yintercept = 0.05,
+    linetype = "dashed",
+    color = "grey40"
+  ) +
+  geom_vline(
+    xintercept = 15.2,
+    linetype = "dashed",
+    color = "grey40"
+  ) +
+  labs(
+    title = "0.5chisq(5)+0.5chisq(d), n=200",
+    x = "d",
+    y = "Power",
+    color = "eps",
+    linetype = "eps",
+    shape = "eps"
+  ) +
+  theme_minimal()
+
+# Table: eps in rows, d values in columns
+power_table <- rrr %>%
+  select(eps, d, power) %>%
+  pivot_wider(
+    names_from = d,
+    values_from = power,
+    names_prefix = "d_"
+  ) %>%
+  arrange(eps)
+power_table
 
