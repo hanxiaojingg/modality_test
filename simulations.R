@@ -80,7 +80,7 @@ for (i in seq_along(eps_values)) {
     z <- rbinom(n, 1, 0.6)
     x <- rep(0, n)
     x[z == 1] <- rnorm(sum(z == 1), 0, 1)
-    x[z == 0] <- rnorm(sum(z == 0), 3, 1)
+    x[z == 0] <- rnorm(sum(z == 0), 2, 1)
     #x = benchden::rberdev(n, dnum=23)
     ans <- bmodetest(x,B = B,cv = TRUE,parallel = FALSE,eps = eps)
     c(pvalue = ans$pvalue, reject = as.numeric(ans$pvalue < alpha))

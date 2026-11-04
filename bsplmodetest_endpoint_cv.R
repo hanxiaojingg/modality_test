@@ -256,7 +256,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
       } else {
         outtb <- sapply(1:B, one_boot)
       }
-      pvalue=sum(outtb>t1)/B
+      pvalue=sum(outtb>=t1)/B
     }
   }
   ### fhat2 correction

@@ -3480,3 +3480,48 @@ pvalue_results4 %>%
     sd = sd(pvalue),
     sd_accept = sd(pvalue[pvalue<0.05])
   )
+
+nsim=100
+n=200
+B=400
+ncores <- max(1, parallel::detectCores() - 1)
+cl <- parallel::makeCluster(ncores)
+doParallel::registerDoParallel(cl)
+eps_values=c(0.01,0.1,1)
+t1 <- Sys.time()
+sim_result <- foreach(
+  r = seq_len(nsim),
+  .combine = "rbind",
+  .packages = c(
+    "splines2", "quadprog", "moments",
+    "multimode", "benchden")
+  # ),
+  # .options.RNG = 1234 + i_n
+) %dorng% {
+  # Generate x once for this replicate
+  z <- rbinom(n, 1, 0.6)
+  x <- rep(0, n)
+  x[z == 1] <- rnorm(sum(z == 1), 0, 1)
+  x[z == 0] <- rnorm(sum(z == 0), 4, 1)
+  # Test this same x at every eps
+  do.call(rbind, lapply(eps_values, function(eps) {
+    ans <- bmodetest(
+      x,
+      B = B,
+      cv = TRUE,
+      parallel = FALSE,
+      eps = eps
+    )
+    data.frame(
+      r = r,
+      eps = eps,
+      pvalue = ans$pvalue,
+      reject = as.numeric(ans$pvalue < alpha)
+    )
+  }))
+}
+elapsed <- as.numeric(difftime(Sys.time(), t1, units = "secs"))
+power_by_eps <- aggregate(reject ~ eps, data = sim_result, FUN = mean)
+###### close
+parallel::stopCluster(cl)
+foreach::registerDoSEQ()
