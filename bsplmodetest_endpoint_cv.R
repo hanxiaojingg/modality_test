@@ -115,7 +115,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   for(i in 1:(m-2)){D1[i,i]=-1;D1[i,i+1]=1}
   D=D1%*%D2
   
-  ## unimadal amat list
+  ## unimodal amat list
   amatl1=list()
   ## mode between t_k and t_{k+1} where k=1,...,m-2
   for(k in 1:2){

@@ -3266,35 +3266,33 @@ results2 <- do.call(rbind, results)
 
 
 nsim <- 200
-B <- 200
+B <- 400
 alpha <- 0.05
-eps_values <- c(0.1, 1)
-n_values <- c(100,200,400,600)
+eps_values <- c(0.1, 0.3, 0.5)
+n_values <- c(100,200,400,600,800)
 ncores <- max(1, parallel::detectCores() - 1)
 cl <- parallel::makeCluster(ncores)
 doParallel::registerDoParallel(cl)
 
-results <- vector("list", length(d_values) * length(eps_values))
+results <- vector("list", length(n_values) * length(eps_values))
 result_index <- 1
 
-for (n in n_values) {
+for (n in n_values[5]) {
   for (eps in eps_values) {
     t1 <- Sys.time()
-    
     sim_result <- foreach(
       r = 1:nsim,
       .combine = "rbind",
       .packages = c(
         "splines2", "quadprog", "moments",
         "multimode", "benchden"
-      ),
-      .options.RNG = 123
+      )#,
+      #.options.RNG = 1234
     ) %dorng% {
-      z <- rbinom(n, 1, 0.5)
-      
+      z <- rbinom(n, 1, 0.6)
       x <- rep(0, n)
       x[z == 1] <- rnorm(sum(z == 1), 0, 1)
-      x[z == 0] <- rnorm(sum(z == 0), 2.44, 1)
+      x[z == 0] <- rnorm(sum(z == 0), 2.4, 1)
       # x[z == 1] <- rchisq(sum(z == 1), 5)
       # x[z == 0] <- rchisq(sum(z == 0), d)      
       ans <- bmodetest(
@@ -3304,35 +3302,32 @@ for (n in n_values) {
         parallel = FALSE,
         eps = eps
       )
-      
       c(
         pvalue = ans$pvalue,
         reject = as.numeric(ans$pvalue < alpha)
       )
     }
-    
     elapsed <- difftime(Sys.time(), t1, units = "secs")
-    
     results[[result_index]] <- data.frame(
       n = n,
       eps = eps,
       power = mean(sim_result[, "reject"]),
       elapsed_seconds = as.numeric(elapsed)
     )
-    
     cat("n =", n, "| eps =", eps, "completed\n")
     result_index <- result_index + 1
   }
 }
 parallel::stopCluster(cl)
 foreach::registerDoSEQ()
+newres2=do.call(rbind, results)
 
 
 # library(ggplot2)
 # library(dplyr)
 # library(tidyr)
 
-rrr3 <- rrr3 %>%
+newres <- newres %>%
   mutate(eps = factor(eps))
 
 # Plot
@@ -3377,3 +3372,111 @@ power_table <- rrr %>%
   arrange(eps)
 power_table
 
+res2 = res2 %>%
+  mutate(eps = factor(eps))
+# Plot
+
+
+
+
+
+nsim <- 200
+B <- 400
+alpha <- 0.05
+eps_values <- c(0.1, 0.3, 0.5)
+n_values <- c(200,400,600,800,1000)
+ncores <- max(1, parallel::detectCores() - 1)
+cl <- parallel::makeCluster(ncores)
+doParallel::registerDoParallel(cl)
+pvalue_results <- vector("list", length(n_values))
+power_results <- vector("list", length(n_values))
+
+for (i_n in seq_along(n_values)) {
+  n <- n_values[i_n]
+  t1 <- Sys.time()
+  sim_result <- foreach(
+    r = seq_len(nsim),
+    .combine = "rbind",
+    .packages = c(
+      "splines2", "quadprog", "moments",
+      "multimode", "benchden")
+    # ),
+    # .options.RNG = 1234 + i_n
+  ) %dorng% {
+    # Generate x once for this replicate
+    z <- rbinom(n, 1, 0.6)
+    x <- rep(0, n)
+    x[z == 1] <- rnorm(sum(z == 1), 0, 1)
+    x[z == 0] <- rnorm(sum(z == 0), 2.4, 1)
+    # Test this same x at every eps
+    do.call(rbind, lapply(eps_values, function(eps) {
+      ans <- bmodetest(
+        x,
+        B = B,
+        cv = TRUE,
+        parallel = FALSE,
+        eps = eps
+      )
+      data.frame(
+        r = r,
+        eps = eps,
+        pvalue = ans$pvalue,
+        reject = as.numeric(ans$pvalue < alpha)
+      )
+    }))
+  }
+  elapsed <- as.numeric(difftime(Sys.time(), t1, units = "secs"))
+  sim_result$n <- n
+  pvalue_results[[i_n]] <- sim_result[, c("n", "r", "eps", "pvalue", "reject")]
+  # Calculate power separately for each eps
+  power_by_eps <- aggregate(reject ~ eps, data = sim_result, FUN = mean)
+  power_results[[i_n]] <- data.frame(
+    n = n,
+    eps = power_by_eps$eps,
+    power = power_by_eps$reject,
+    elapsed_seconds = elapsed
+  )
+  cat("n =", n, "completed\n")
+}
+pvalue_results3 <- do.call(rbind, pvalue_results)
+power_results3 <- do.call(rbind, power_results)
+parallel::stopCluster(cl)
+foreach::registerDoSEQ()
+
+power_results4 = rbind(power_results1,power_results2)
+
+power_results4 <- power_results4 %>%
+  mutate(eps = factor(eps))
+ggplot(power_results4, aes(
+  x = n,
+  y = power,
+  group = eps,
+  color = eps,
+  linetype = eps,
+  shape = eps
+)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.5) +
+  geom_hline(
+    yintercept = 0.05,
+    linetype = "dashed",
+    color = "grey40"
+  ) +
+  labs(
+    title = "0.6N(0,1)+0.4N(2.4,1), nsim=400, B=400, eps = eps*n^{-2/7}",
+    x = "n",
+    y = "Power",
+    color = "eps",
+    linetype = "eps",
+    shape = "eps"
+  ) +
+  theme_minimal()
+
+pvalue_results4 %>% 
+  group_by(n,eps) %>%
+  summarise(
+    count = n(),
+    rej = sum(reject)/count,
+    sd = sd(pvalue),
+    sd_accept = sd(pvalue[pvalue<0.05])
+  )
