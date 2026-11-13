@@ -3481,13 +3481,13 @@ pvalue_results4 %>%
     sd_accept = sd(pvalue[pvalue<0.05])
   )
 
-nsim=100
+nsim=200
 n=200
 B=400
-ncores <- max(1, parallel::detectCores() - 1)
+ncores <- max(1, parallel::detectCores() - 2)
 cl <- parallel::makeCluster(ncores)
 doParallel::registerDoParallel(cl)
-eps_values=c(0.01,0.1,1)
+eps_values=0.34
 t1 <- Sys.time()
 sim_result <- foreach(
   r = seq_len(nsim),
@@ -3499,24 +3499,27 @@ sim_result <- foreach(
   # .options.RNG = 1234 + i_n
 ) %dorng% {
   # Generate x once for this replicate
-  z <- rbinom(n, 1, 0.6)
-  x <- rep(0, n)
-  x[z == 1] <- rnorm(sum(z == 1), 0, 1)
-  x[z == 0] <- rnorm(sum(z == 0), 4, 1)
-  # Test this same x at every eps
+  z <- runif(n)
+  x <- rnorm(n,0,9)
+  x[z<0.4] <- rnorm(sum(z<0.4), 0, 1)
+  x[z>0.6] <- rnorm(sum(z>0.6), 2, 1)
+  # x <- rchisq(n,5)
+  # x[z>0.5] <- rchisq(sum(z>0.5),15)
+  #Test this same x at every eps
   do.call(rbind, lapply(eps_values, function(eps) {
     ans <- bmodetest(
       x,
       B = B,
       cv = TRUE,
       parallel = FALSE,
-      eps = eps
+      eps = eps,
+      epsrate = 1/7
     )
     data.frame(
       r = r,
       eps = eps,
       pvalue = ans$pvalue,
-      reject = as.numeric(ans$pvalue < alpha)
+      reject = as.numeric(ans$pvalue < 0.05)
     )
   }))
 }

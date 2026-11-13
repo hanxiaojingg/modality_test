@@ -10,7 +10,7 @@ library(doParallel)
 #' @param eps customized penalty parameter for 'flat spot' slope, the actual value used is eps*n^{-5/9}
 #' @param parallel default = TRUE, whether use parallel for sampling
 ##############################################################
-deconmodetest <- function(y,h,lower = NULL, upper = NULL,B=500,lam=NULL, eps=0.001, parallel=TRUE){
+deconmodetest <- function(y,h,lower = NULL, upper = NULL,B=500,lam=NULL, eps=1, parallel=TRUE){
   n = length(y)
   sd = sd(x)
   y = sort(y)/sd
@@ -63,11 +63,7 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,B=500,lam=NULL, eps=0.0
     gamma[yp>tk[j+1]+h&yp<=tk[j+2]+h,j] = 2*(yp[yp>tk[j+1]+h&yp<=tk[j+2]+h]-h-tk[j+1]-d/2)^3/9/h/d^2+(-yp[yp>tk[j+1]+h&yp<=tk[j+2]+h]+tk[j+2]+h)/2/h+d/12/h
     gamma[yp>tk[j+2]+h&yp<=tk[j+3]+h,j] = (-yp[yp>tk[j+2]+h&yp<=tk[j+3]+h]+tk[j+3]+h)^3/9/h/d^2
   }
-  hmat = matrix(0,nrow=m,ncol=m)
-  for(i in 1:m){
-    for(j in 1:i)
-      hmat[i,j] = hmat[j,i]=sum(gamma[,i]*gamma[,j])*(yp[2]-yp[1])
-  }
+  hmat <- crossprod(gamma) * (yp[2] - yp[1])
   avec = 1:m*0+4*d/3
   wmat = matrix(0,nrow=m,ncol=m-1)
   for(i in 1:(m-1)){
@@ -85,8 +81,8 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,B=500,lam=NULL, eps=0.0
   D = 4*D/3*sqrt(d)
   
   ##unimodal amat list
-  k1=max(min(which(tk>quantile(y,.1)))-1,4)
-  k2=min(max(which(tk<quantile(y,.9)))+1,m-1)   
+  k1=max(min(which(tk>quantile(y,.15)))-1,4)
+  k2=min(max(which(tk<quantile(y,.85)))+1,m-1)   
   amatl1=list()
   ## when the mode is between t_i,t_i+1
   for(i in k1:k2){
@@ -100,8 +96,8 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,B=500,lam=NULL, eps=0.0
     amatl1[[i-k1+1]]=list(amatw=t(amat%*%wmat), bvec= -amat %*% b0)
   }  
   ##bimodal amat list
-  m1=max(min(which(tk>quantile(y,.1)))-1,3)
-  m2=min(max(which(tk<quantile(y,.9)))+1,m)
+  m1=max(min(which(tk>quantile(y,.15)))-1,3)
+  m2=min(max(which(tk<quantile(y,.85)))+1,m)
   if((m2-m1)<5){m1=max(3,m1-1);m2=min(m2+1,m)}
   trips=matrix(0,nrow=choose((m2-m1+1),3),ncol=3)
   nr=0   
@@ -147,7 +143,7 @@ deconmodetest <- function(y,h,lower = NULL, upper = NULL,B=500,lam=NULL, eps=0.0
     } else {
       cdf1=cumsum(fhat1)
       cdf1=cdf1-min(cdf1)
-      cdf1=cdf1/cdf1[4000]
+      cdf1=round(cdf1/cdf1[4000],5)
       one_boot <- function(t) {
         u = runif(n)
         id = findInterval(u,cdf1) + 1
@@ -211,7 +207,7 @@ deconbmfit=function(y,tk,amatl2,hmat,cvec,b0,wmat,DtD,lam=NULL,d ,h){
     amatw2 <- amatl2[[which.min(crit)]][[1]]
     bvec <- amatl2[[which.min(crit)]][[2]]
     L = 10
-    lam_set = c(0.0001,0.001,0.01,0.1,1,10,100)
+    lam_set = c(0.001,0.01,0.1,1,10)
     fold_assignments <- sample(rep(1:L, length.out=n))
     crit_cv = NULL
     for( lamt in lam_set){
@@ -308,25 +304,25 @@ makec=function(y,tk,d,h){
   cvec
 }
 
-
-
 library(quadprog)
 library(doParallel)
-ncores <- detectCores()-1
+ncores <- detectCores()-2
 registerDoParallel(ncores)
-stopImplicitCluster()
+
+#stopImplicitCluster()
 
 par(mfrow=c(1,2))
 n=600
-h=2
+h=0.5
 mu2=4
 p=0.5
 uu=runif(n);x=rnorm(n,0,1);x[uu<p]=rnorm(sum(uu<p),mu2,1)
 y=x+runif(n,-h,h)
 t1=Sys.time()
-ans=deconmodetest(y,h, B=500,eps = 0.001)
+ans=deconmodetest(y,h, B=400,eps = 1)
 t2=Sys.time()
 t2-t1
+ans$lam
 ans$pvalue
 hist(y,xlim = range(ans$yp), breaks=40,freq=FALSE)
 lines(ans$yp,ans$ghat1,col=2)
@@ -337,21 +333,21 @@ lines(ans$yp,ans$fhat1,col=2)
 lines(ans$yp,ans$fhat2,col=3)
 lines(ans$yp,(1-p)*dnorm(ans$yp,0,1)+p*dnorm(ans$yp,mu2,1))
 rug(ans$kn)
-ans$lam
-
+hist(ans$tb[ans$tb!=-1000]);abline(v=ans$statistic)
 
 par(mfrow=c(1,2))
 n=600
 h=2
-mu2=3.5
+mu2=4
 p=0.5
 uu=runif(n);x=rnorm(n,0,1);x[uu<p]=rnorm(sum(uu<p),mu2,1)
 y=x+rnorm(n,0,h/sqrt(3))
 t1=Sys.time()
-ans=deconmodetest(y,h, B=500,eps = 0.001)
+ans=deconmodetest(y,h, B=500,eps = 1)
 t2=Sys.time()
 t2-t1
 ans$pvalue
+ans$lam
 hist(y,breaks=40,freq=FALSE)
 lines(ans$yp,ans$ghat1,col=2)
 lines(ans$yp,ans$ghat2,col=3)
@@ -361,7 +357,7 @@ lines(ans$yp,ans$fhat1,col=2)
 lines(ans$yp,ans$fhat2,col=3)
 lines(ans$yp,(1-p)*dnorm(ans$yp,0,1)+p*dnorm(ans$yp,mu2,1))
 rug(ans$kn)
-ans$lam
+
 
 
 
@@ -448,5 +444,150 @@ cl <- makeCluster(no_cores - 2)
 registerDoParallel(cl)
 clusterEvalQ(cl, library(quadprog))  # Load the quadprog library in each worker
 clusterExport(cl, list("deconmodetest", "deconumfit", "deconbmfit", "deconmodet", "makec"))
+
+
+
+
+
+
+library(foreach)
+library(doParallel)
+library(doRNG)
+set.seed(123)
+
+n <- 600
+mu2 <- 4
+p_mix <- 0.5
+h_values <- c(0.5, 1, 1.5, 2, 2.5)
+nsim <- 5       # Change to 1000 for the full simulation
+B <- 501
+
+ncores <- max(1L, parallel::detectCores() - 1L)
+cl <- parallel::makeCluster(ncores)
+doParallel::registerDoParallel(cl)
+
+results_by_h <- vector("list", length(h_values))
+
+tryCatch({
+  for (j in seq_along(h_values)) {
+    current_h <- h_values[j]
+    
+    results_by_h[[j]] <- foreach(
+      h = rep(current_h, nsim),
+      .combine = rbind,
+      .packages = "quadprog"
+    ) %dorng% {
+      uu <- runif(n)
+      x <- rnorm(n, mean = 0, sd = 1)
+      
+      in_second_component <- uu < p_mix
+      x[in_second_component] <- rnorm(
+        sum(in_second_component),
+        mean = mu2,
+        sd = 1
+      )
+      
+      y <- x + runif(n, min = -h, max = h)
+      ans <- deconmodetest(y, h, B = B, eps = 1)
+      
+      data.frame(h = h, pvalue = as.numeric(ans$pvalue))
+    }
+  }
+}, finally = {
+  try(parallel::stopCluster(cl), silent = TRUE)
+  foreach::registerDoSEQ()
+})
+
+results <- do.call(rbind, results_by_h)
+
+power_results <- aggregate(
+  I(pvalue < 0.05) ~ h,
+  data = results,
+  FUN = mean
+)
+names(power_results)[2] <- "power"
+
+results
+power_results
+
+
+library(foreach)
+library(doParallel)
+library(doRNG)
+
+n <- 600
+mu2 <- 4
+p_mix <- 0.5
+h_values <- c(1, 1.5, 2, 2.5)
+nsim <- 50       # Change to 1000 for the full simulation
+B <- 401
+
+set.seed(123)
+
+ncores <- max(1, parallel::detectCores() - 1)
+cl <- parallel::makeCluster(ncores)
+doParallel::registerDoParallel(cl)
+
+results_by_h <- vector("list", length(h_values))
+time_by_h <- numeric(length(h_values))
+
+tryCatch({
+  for (j in seq_along(h_values)) {
+    current_h <- h_values[j]
+    start_time <- Sys.time()
+    
+    results_by_h[[j]] <- foreach(
+      h = rep(current_h, nsim),
+      .combine = rbind,
+      .packages = "quadprog"
+    ) %dorng% {
+      uu <- runif(n)
+      x <- rnorm(n, mean = 0, sd = 1)
+      
+      in_second_component <- uu < p_mix
+      x[in_second_component] <- rnorm(
+        sum(in_second_component),
+        mean = mu2,
+        sd = 1
+      )
+      
+      y <- x + runif(n, min = -h, max = h)
+      ans <- deconmodetest(y, h, B = B, eps = 1, parallel = FALSE)
+      
+      data.frame(h = h, pvalue = as.numeric(ans$pvalue))
+    }
+    
+    time_by_h[j] <- as.numeric(
+      difftime(Sys.time(), start_time, units = "secs")
+    )
+    
+    message(sprintf(
+      "Completed h = %s in %.1f seconds",
+      current_h, time_by_h[j]
+    ))
+  }
+}, finally = {
+  try(parallel::stopCluster(cl), silent = TRUE)
+  foreach::registerDoSEQ()
+})
+
+results <- do.call(rbind, results_by_h)
+
+power_results <- aggregate(
+  I(pvalue < 0.05) ~ h,
+  data = results,
+  FUN = mean
+)
+names(power_results)[2] <- "power"
+
+timing_results <- data.frame(
+  h = h_values,
+  elapsed_seconds = time_by_h,
+  elapsed_minutes = time_by_h / 60
+)
+
+results
+power_results
+timing_results
 
 

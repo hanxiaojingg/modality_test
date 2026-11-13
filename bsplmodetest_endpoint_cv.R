@@ -17,11 +17,12 @@ library("multimode")
 #' @param upper upper bound of the support
 #' @param B the number of replicates used in the test
 #' @param lam the smoothing penalty parameter
-#' @param eps customized penalty parameter for 'flat spot' slope, the actual value used is eps*n^{-2/7}
+#' @param eps customized penalty parameter for 'flat spot' slope
+#' @param epsrate  the actual value used is eps/n^epsrate
 #' @param cv default = TRUE, whether use cross validation to find lambda
 #' @param parallel default = TRUE, whether use parallel for sampling
 ##############################################################
-bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=TRUE,parallel=FALSE){
+bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.1,epsrate=2/7,cv=TRUE,parallel=FALSE){
   sd = sd(x)
   y = x/sd
   #sd=1
@@ -122,7 +123,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
     amat=matrix(0,nrow=m+1,ncol=m)
     amat[1:k,]=slopes[1:k,]
     amat[(k+1):(k+2),]=-slopes[(k+1):(k+2),]
-    amat[(k+3):(m-1),]=-slopes[(k+3):(m-1),]-eps/n^(2/7)*bk[(k+3):(m-1),]
+    amat[(k+3):(m-1),]=-slopes[(k+3):(m-1),]-eps/n^epsrate*bk[(k+3):(m-1),]
     amat[m,1]=1
     amat[m+1,m]=1
     #epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
@@ -131,10 +132,10 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   }
   for(k in 3:(m-4)){
     amat=matrix(0,nrow=m+1,ncol=m)
-    amat[1:(k-2),]=slopes[1:(k-2),]-eps/n^(2/7)*bk[1:(k-2),]
+    amat[1:(k-2),]=slopes[1:(k-2),]-eps/n^epsrate*bk[1:(k-2),]
     amat[c(k-1,k),]=slopes[c(k-1,k),]
     amat[c(k+1,k+2),]=-slopes[c(k+1,k+2),]
-    amat[(k+3):(m-1),]=-slopes[(k+3):(m-1),]-eps/n^(2/7)*bk[(k+3):(m-1),]
+    amat[(k+3):(m-1),]=-slopes[(k+3):(m-1),]-eps/n^epsrate*bk[(k+3):(m-1),]
     amat[m,1]=1
     amat[m+1,m]=1
     #epsvec=c(rep(eps/n^(2/7)/diff(range(kn))^2,k-1),0,0,rep(eps/n^(2/7)/diff(range(kn))^2,m-k-2),0,0)
@@ -143,7 +144,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   }
   for(k in (m-3):(m-2)){
     amat=matrix(0,nrow=m+1,ncol=m)
-    amat[1:(k-2),]=slopes[1:(k-2),]-eps/n^(2/7)*bk[1:(k-2),]
+    amat[1:(k-2),]=slopes[1:(k-2),]-eps/n^epsrate*bk[1:(k-2),]
     amat[c(k-1,k),]=slopes[c(k-1,k),]
     amat[c(k+1,m-1),]=-slopes[c(k+1,m-1),]
     amat[m,1]=1
@@ -155,9 +156,9 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.01,cv=T
   ## mode at t_1 and t_{m-1}
   ## for amat_{m-1} and amat_m
   amatt1 = rbind(-slopes,c(rep(0,m-1),1))
-  amatt1[3:(m-1),] = -slopes[3:(m-1),]-eps/n^(2/7)*bk[3:(m-1),]
+  amatt1[3:(m-1),] = -slopes[3:(m-1),]-eps/n^epsrate*bk[3:(m-1),]
   amattm1 = rbind(slopes,c(1, rep(0,m-1)))
-  amattm1[1:(m-3),]=slopes[1:(m-3),]-eps/n^(2/7)*bk[1:(m-3),]
+  amattm1[1:(m-3),]=slopes[1:(m-3),]-eps/n^epsrate*bk[1:(m-3),]
   amatl1[[m-1]]=list(amatw = t(amatt1%*%wmat), bvec = -amatt1 %*% b0 )
   amatl1[[m]]=list(amatw = t(amattm1%*%wmat), bvec = -amattm1 %*% b0)
   ## bimodal amat list
