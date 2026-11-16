@@ -431,4 +431,15 @@ hist(datay,xlim=range(ans$xp),freq=FALSE,breaks=30)
 lines(ans$xp,ans$fhat1,col=2)
 lines(ans$xp,ans$fhat2,col=3)
 rug(ans$kn)
+hist(ans[ans$tb>-1000],
+     breaks = 25,
+     freq = FALSE,
+     main = "Bootstrap distribution",
+     xlab = "Test statistic")
+abline(v = ans$statistic, col = "red", lwd = 2)
 ans$pvalue
+
+
+
+
+
