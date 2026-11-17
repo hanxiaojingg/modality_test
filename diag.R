@@ -426,24 +426,24 @@ ncores = max(1, detectCores() - 1)
 registerDoParallel(ncores)
 #stopImplicitCluster()
 #datay=read.csv("/Users/sheronjing/Library/CloudStorage/Dropbox/Hanxiao/modality/revision/goofyrej.txt")[,1]
-n=200
+n=800
 z <- runif(n)
 x = rnorm(n,0,9)
 x[z < 0.4] <- rnorm(sum(z<0.4),0,1)
 x[z > 0.6] <- rnorm(sum(z>0.6),2,1)
-ans=bmodetest(x,B=400,parallel = TRUE)
-hist(x,xlim=range(ans$xp),freq=FALSE,breaks=30)
+ans=bmodetest(x,B=400,parallel = TRUE,eps=0.001)
+hist(x,xlim=range(ans$xp),freq=FALSE,breaks=50)
 lines(ans$xp,ans$fhat1,col=2)
 lines(ans$xp,ans$fhat2,col=3)
 rug(ans$kn)
 hist(ans$tb[ans$tb>-1000],
-     breaks = 25,
+     breaks = 50,
      freq = FALSE,
      main = "Bootstrap distribution",
      xlab = "Test statistic")
 abline(v = ans$statistic, col = "red", lwd = 2)
 ans$pvalue
-
+ans$lam
 
 
 
