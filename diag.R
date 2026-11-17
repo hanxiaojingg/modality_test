@@ -421,17 +421,22 @@ rtrue <- function(n) {
   
   x
 }
-par(mfrow=c(1,1))
+par(mfrow=c(1,2))
 ncores = max(1, detectCores() - 1)
 registerDoParallel(ncores)
 #stopImplicitCluster()
-datay=read.csv("/Users/sheronjing/Library/CloudStorage/Dropbox/Hanxiao/modality/revision/goofyrej.txt")[,1]
-ans=bmodetest(datay,B=200,parallel = TRUE)
-hist(datay,xlim=range(ans$xp),freq=FALSE,breaks=30)
+#datay=read.csv("/Users/sheronjing/Library/CloudStorage/Dropbox/Hanxiao/modality/revision/goofyrej.txt")[,1]
+n=200
+z <- runif(n)
+x = rnorm(n,0,9)
+x[z < 0.4] <- rnorm(sum(z<0.4),0,1)
+x[z > 0.6] <- rnorm(sum(z>0.6),2,1)
+ans=bmodetest(x,B=400,parallel = TRUE)
+hist(x,xlim=range(ans$xp),freq=FALSE,breaks=30)
 lines(ans$xp,ans$fhat1,col=2)
 lines(ans$xp,ans$fhat2,col=3)
 rug(ans$kn)
-hist(ans[ans$tb>-1000],
+hist(ans$tb[ans$tb>-1000],
      breaks = 25,
      freq = FALSE,
      main = "Bootstrap distribution",
