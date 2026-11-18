@@ -88,7 +88,7 @@ sim_result <- foreach(
   y[u>.8]=y2[u>.8]
   my=mean(y);sy=sd(y)
   ys=(y-mean(y))/sd(y)
-  atest=testunim(y,200,.16)
+  atest=testunim(y,400,.2)
   atest$pval
 }
 elapsed <- as.numeric(difftime(Sys.time(), t1, units = "secs"))
