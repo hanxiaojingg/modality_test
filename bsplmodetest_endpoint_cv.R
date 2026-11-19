@@ -22,7 +22,7 @@ library("multimode")
 #' @param cv default = TRUE, whether use cross validation to find lambda
 #' @param parallel default = TRUE, whether use parallel for sampling
 ##############################################################
-bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.1,epsrate=2/7,cv=TRUE,parallel=FALSE){
+bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.1,epsrate=1/7,cv=TRUE,parallel=FALSE){
   sd = sd(x)
   y = x/sd
   #sd=1
@@ -32,6 +32,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.1,epsra
   if(is.null(lower)){
     if(n > 5){
       s1 = min(y) - max(diff(y[1:6]))
+      #s1 = min(y) - max(max(diff(y)),(max(y)-min(y))/8)
     } else {
       s1 = min(y)
     }
@@ -42,6 +43,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.1,epsra
   if(is.null(upper)){
     if(n > 5){
       s2 = max(y) + max(diff(y[(n-5):n]))
+      #s2 = max(y) + max(max(diff(y)),(max(y)-min(y))/8)
     } else {
       s2 = max(y)
     }
@@ -92,7 +94,8 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.1,epsra
   bp=bSpline(yp,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   bk=bSpline(kn,degree=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   slopes=bSpline(kn,degree=2,derivs=1,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
-  D2=bSpline(kn,degree=2,derivs=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
+  knm=(kn[-1]+kn[-length(kn)])/2
+  D2=bSpline(knm,degree=2,derivs=2,knots=kn[2:(m-2)],Boundary.knots=c(s1,s2),intercept=TRUE)
   ###  make all basis functions integrate to one
   dp=yp[2]-yp[1]
   avec=1:m
@@ -112,8 +115,8 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.1,epsra
   wmat=matrix(0,nrow=m,ncol=m-1)
   for(i in 1:(m-1)){wmat[i,i]=-1;wmat[i+1,i]=1}
   
-  D1=matrix(0,m-2,m-1)
-  for(i in 1:(m-2)){D1[i,i]=-1;D1[i,i+1]=1}
+  D1=matrix(0,m-3,m-2)
+  for(i in 1:(m-3)){D1[i,i]=-1;D1[i,i+1]=1}
   D=D1%*%D2
   
   ## unimodal amat list
@@ -223,6 +226,7 @@ bmodetest <- function(x ,lower = NULL, upper = NULL,B=500,lam=NULL,eps=0.1,epsra
   
   ##  get unimodal
   DtD = crossprod(D)
+  DtD = DtD/max(abs(DtD))
   ans2=bmfit(y,kn,amatl2,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam,cv=cv)
   ans1=umfit(y,kn,amatl1,hmat,cvec,slopes,b0,wmat,DtD,bspl,lam = ans2$lam,eps=eps, cv=FALSE)
   t1=as.numeric((ans1$crit-ans2$crit))

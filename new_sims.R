@@ -3481,13 +3481,13 @@ pvalue_results4 %>%
     sd_accept = sd(pvalue[pvalue<0.05])
   )
 
-nsim=200
-n=200
+nsim=100
+n=800
 B=400
-ncores <- max(1, parallel::detectCores() - 2)
+ncores <- max(1, parallel::detectCores() - 1)
 cl <- parallel::makeCluster(ncores)
 doParallel::registerDoParallel(cl)
-eps_values=0.34
+eps_values=0.4
 t1 <- Sys.time()
 sim_result <- foreach(
   r = seq_len(nsim),
@@ -3500,11 +3500,11 @@ sim_result <- foreach(
 ) %dorng% {
   # Generate x once for this replicate
   z <- runif(n)
-  x <- rnorm(n,0,9)
-  x[z<0.4] <- rnorm(sum(z<0.4), 0, 1)
-  x[z>0.6] <- rnorm(sum(z>0.6), 2, 1)
-  # x <- rchisq(n,5)
-  # x[z>0.5] <- rchisq(sum(z>0.5),15)
+  # x <- rnorm(n,0,9)
+  # x[z<0.4] <- rnorm(sum(z<0.4), 0, 1)
+  # x[z>0.6] <- rnorm(sum(z>0.6), 2, 1)
+  x <- rchisq(n,5)
+  x[z>0.5] <- rchisq(sum(z>0.5),15)
   #Test this same x at every eps
   do.call(rbind, lapply(eps_values, function(eps) {
     ans <- bmodetest(
@@ -3528,3 +3528,8 @@ power_by_eps <- aggregate(reject ~ eps, data = sim_result, FUN = mean)
 ###### close
 parallel::stopCluster(cl)
 foreach::registerDoSEQ()
+
+
+
+
+
